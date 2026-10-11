@@ -1,6 +1,8 @@
-﻿<div class="top-row ps-3 navbar navbar-dark">
+﻿@inject NavigationManager Navigation
+
+<div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">IMC_</a>
+        <a class="navbar-brand" href=""></a>
     </div>
 </div>
 
@@ -9,22 +11,65 @@
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+            <NavLink class="nav-link" href="/bandeja">
+                Bandeja de entrada
             </NavLink>
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
+            <NavLink class="nav-link" href="/destacados">
+                Destacados
             </NavLink>
         </div>
 
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
+            <NavLink class="nav-link" href="/enviados">
+                Enviados
             </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="/papelera">
+                Papelera
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            <NavLink class="nav-link btn btn-primary" href="/redactar">
+                Nuevo mensaje
+            </NavLink>
+        </div>
+
+        <div class="nav-item px-3">
+            @if (confirmSignOut)
+            {
+                <span class="nav-link">¿Deseas cerrar sesión?</span>
+                <button type="button" class="btn btn-link nav-link" @onclick="SignOut">Sí, cerrar sesión</button>
+                <button type="button" class="btn btn-link nav-link" @onclick="CancelSignOut">Cancelar</button>
+            }
+            else
+            {
+                <button type="button" class="btn btn-link nav-link" @onclick="RequestSignOut">Cerrar sesión</button>
+            }
         </div>
     </nav>
 </div>
 
+@code {
+    private bool confirmSignOut;
+
+    private void RequestSignOut()
+    {
+        confirmSignOut = true;
+    }
+
+    private void CancelSignOut()
+    {
+        confirmSignOut = false;
+    }
+
+    private void SignOut()
+    {
+        Navigation.NavigateTo("/login");
+    }
+}

@@ -7,4 +7,12 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Supabase" Version="8.3.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include=".github\instructions\blazor.instructions.md" />
+  </ItemGroup>
+
 </Project>
