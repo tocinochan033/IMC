@@ -1,4 +1,7 @@
 ﻿@inject NavigationManager Navigation
+@inject SupabaseService SupabaseService
+@inject ILogger<NavMenu> Logger
+@using Supabase.Gotrue.Exceptions
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -44,8 +47,14 @@
             @if (confirmSignOut)
             {
                 <span class="nav-link">¿Deseas cerrar sesión?</span>
-                <button type="button" class="btn btn-link nav-link" @onclick="SignOut">Sí, cerrar sesión</button>
+                <button type="button" class="btn btn-link nav-link" @onclick="SignOut" disabled="@isSigningOut">
+                    @(isSigningOut ? "Cerrando..." : "Sí, cerrar sesión")
+                </button>
                 <button type="button" class="btn btn-link nav-link" @onclick="CancelSignOut">Cancelar</button>
+                @if (!string.IsNullOrWhiteSpace(signOutError))
+                {
+                    <span class="nav-link text-danger">@signOutError</span>
+                }
             }
             else
             {
@@ -57,6 +66,8 @@
 
 @code {
     private bool confirmSignOut;
+    private bool isSigningOut;
+    private string? signOutError;
 
     private void RequestSignOut()
     {
@@ -68,8 +79,34 @@
         confirmSignOut = false;
     }
 
-    private void SignOut()
+    private async Task SignOut()
     {
-        Navigation.NavigateTo("/login");
+        if (isSigningOut)
+        {
+            return;
+        }
+
+        isSigningOut = true;
+        signOutError = null;
+
+        try
+        {
+            await SupabaseService.SignOutAsync();
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo cerrar la sesión en Supabase.");
+            signOutError = "No se pudo cerrar sesión. Inténtalo de nuevo.";
+        }
+        catch (GotrueException exception)
+        {
+            Logger.LogError(exception, "Supabase Auth rechazó la solicitud de cierre de sesión.");
+            signOutError = "No se pudo cerrar sesión. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            isSigningOut = false;
+        }
     }
 }
