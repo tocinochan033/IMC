@@ -1,0 +1,96 @@
+@page "/redactar"
+@using Supabase.Gotrue.Exceptions
+@using Supabase.Postgrest.Exceptions
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<Redactar> Logger
+
+<PageTitle>Nuevo mensaje</PageTitle>
+
+<h1>Nuevo mensaje</h1>
+
+<div class="mb-3">
+    <label for="destinatario" class="form-label">Destinatario</label>
+    <input id="destinatario" type="text" class="form-control" @bind="Destinatario" />
+</div>
+
+<div class="mb-3">
+    <label for="asunto" class="form-label">Asunto</label>
+    <input id="asunto" type="text" class="form-control" @bind="Asunto" />
+</div>
+
+<div class="mb-3">
+    <label for="cuerpo" class="form-label">Mensaje</label>
+    <textarea id="cuerpo" class="form-control" rows="8" @bind="Cuerpo"></textarea>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <p class="alert alert-danger" role="alert">@errorMessage</p>
+}
+
+<button type="button" class="btn btn-primary" @onclick="Enviar" disabled="@isSending">
+    @(isSending ? "Enviando..." : "Enviar")
+</button>
+
+@code {
+    private string Destinatario { get; set; } = string.Empty;
+    private string Asunto { get; set; } = string.Empty;
+    private string Cuerpo { get; set; } = string.Empty;
+    private bool isSending;
+    private string? errorMessage;
+
+    private async Task Enviar()
+    {
+        if (isSending)
+        {
+            return;
+        }
+
+        isSending = true;
+        errorMessage = null;
+
+        try
+        {
+            if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var senderId))
+            {
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            var result = await SupabaseService.EnviarCorreo(senderId, Destinatario, Asunto, Cuerpo);
+            if (result == ResultadoEnvioCorreo.DestinatarioNoValido)
+            {
+                errorMessage = "No existe un usuario con ese correo destinatario.";
+                return;
+            }
+
+            Navigation.NavigateTo("/bandeja");
+        }
+        catch (GotrueException exception)
+        {
+            Logger.LogError(exception, "Supabase Auth rechazó el envío del mensaje.");
+            errorMessage = "Tu sesión no es válida. Inicia sesión de nuevo.";
+        }
+        catch (PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al enviar el mensaje.");
+            errorMessage = "No se pudo enviar el mensaje. Inténtalo de nuevo.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo conectar con Supabase para enviar el mensaje.");
+            errorMessage = "No se pudo conectar con el servicio. Inténtalo de nuevo.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No se pudo enviar el mensaje por falta de sesión válida.");
+            errorMessage = "Tu sesión no es válida. Inicia sesión de nuevo.";
+            Navigation.NavigateTo("/login");
+        }
+        finally
+        {
+            isSending = false;
+        }
+    }
+}

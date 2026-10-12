@@ -1,0 +1,75 @@
+@page "/login"
+@page "/"
+@layout LoginLayout
+@using Supabase.Gotrue.Exceptions
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<Login> Logger
+
+<PageTitle>Iniciar sesión</PageTitle>
+
+<h1>Iniciar sesión</h1>
+
+<form @onsubmit="HandleLogin" @onsubmit:preventDefault>
+    <div class="mb-3">
+        <label for="email" class="form-label">Correo</label>
+        <input id="email" type="email" class="form-control" placeholder="correo" @bind="Email" />
+    </div>
+    <div class="mb-3">
+        <label for="password" class="form-label">Contraseña</label>
+        <input id="password" type="password" class="form-control" placeholder="123" @bind="Password" />
+    </div>
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <p class="alert alert-danger" role="alert">@ErrorMessage</p>
+    }
+    <button type="submit" class="btn btn-primary" disabled="@isSigningIn">
+        @(isSigningIn ? "Ingresando..." : "Entrar")
+    </button>
+</form>
+
+@code {
+    private string Email { get; set; } = string.Empty;
+    private string Password { get; set; } = string.Empty;
+    private string? ErrorMessage { get; set; }
+    private bool isSigningIn;
+
+    private async Task HandleLogin()
+    {
+        if (isSigningIn)
+        {
+            return;
+        }
+
+        isSigningIn = true;
+        ErrorMessage = null;
+
+        try
+        {
+            await SupabaseService.SignInAsync(Email, Password);
+            Navigation.NavigateTo("/bandeja");
+        }
+        catch (GotrueException exception)
+        {
+            Logger.LogWarning(
+                "Supabase rechazó el inicio de sesión. Estado: {StatusCode}, código: {ErrorCode}",
+                exception.StatusCode,
+                exception.ErrorCode);
+            ErrorMessage = "No se pudo iniciar sesión. Verifica tu correo y contraseña.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo conectar con Supabase Auth.");
+            ErrorMessage = "No se pudo conectar con el servicio de inicio de sesión. Inténtalo de nuevo.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogError(exception, "La configuración o respuesta de Supabase Auth no es válida.");
+            ErrorMessage = "El servicio de inicio de sesión no está configurado correctamente.";
+        }
+        finally
+        {
+            isSigningIn = false;
+        }
+    }
+}

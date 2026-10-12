@@ -1,0 +1,134 @@
+@page "/bandeja"
+@using IMC_.Models
+@using IMC_.Services
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<Bandeja> Logger
+
+<PageTitle>Bandeja de entrada</PageTitle>
+
+<h1>Bandeja de entrada</h1>
+
+@if (isLoading)
+{
+    <p>Cargando mensajes...</p>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <p class="alert alert-danger" role="alert">@errorMessage</p>
+    }
+
+    @if (mensajes.Count == 0)
+    {
+        <p>No hay mensajes en la bandeja de entrada.</p>
+    }
+    else
+    {
+        <ul class="list-group">
+            @foreach (var mensaje in mensajes)
+            {
+                var noLeido = !mensaje.Entry.IsRead;
+                <li class="list-group-item d-flex align-items-center p-0">
+                    <button type="button"
+                            class="btn btn-link text-start text-decoration-none text-reset flex-grow-1 @(noLeido ? "fw-bold" : string.Empty)"
+                            @onclick="() => AbrirMensaje(mensaje.Message.Id)">
+                        <span class="d-block">Remitente: @mensaje.Message.SenderId</span>
+                        <span class="d-block">@mensaje.Message.Subject</span>
+                        <span class="d-block fw-normal">@VistaPrevia(mensaje.Message.Body)</span>
+                    </button>
+                    <button type="button"
+                            class="btn btn-outline-danger me-2"
+                            aria-label="Mover a papelera"
+                            title="Mover a papelera"
+                            disabled="@movingEntryIds.Contains(mensaje.Entry.Id)"
+                            @onclick="() => MoverAPapelera(mensaje.Entry.Id)">
+                        Eliminar
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private List<(MailboxEntry Entry, Message Message)> mensajes = [];
+    private HashSet<Guid> movingEntryIds = [];
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            mensajes = await SupabaseService.ObtenerBandejaEntradaAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para consultar la bandeja.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo cargar la bandeja desde Supabase.");
+            errorMessage = "No se pudo cargar la bandeja. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar la bandeja.");
+            errorMessage = "Ocurrió un error al consultar tus mensajes.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void AbrirMensaje(Guid id)
+    {
+        Navigation.NavigateTo($"/mensaje/{id}");
+    }
+
+    private async Task MoverAPapelera(Guid mailboxEntryId)
+    {
+        if (!movingEntryIds.Add(mailboxEntryId))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        try
+        {
+            await SupabaseService.MoverAPapelera(mailboxEntryId);
+            mensajes.RemoveAll(mensaje => mensaje.Entry.Id == mailboxEntryId);
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo mover la entrada {MailboxEntryId} a la papelera.", mailboxEntryId);
+            errorMessage = "No se pudo mover el mensaje a la papelera. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó mover la entrada {MailboxEntryId} a la papelera.", mailboxEntryId);
+            errorMessage = "No se pudo mover el mensaje a la papelera. Inténtalo de nuevo.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para mover la entrada {MailboxEntryId}.", mailboxEntryId);
+            Navigation.NavigateTo("/login");
+        }
+        finally
+        {
+            movingEntryIds.Remove(mailboxEntryId);
+        }
+    }
+
+    private static string VistaPrevia(string cuerpo)
+    {
+        const int longitudMaxima = 120;
+        return cuerpo.Length <= longitudMaxima
+            ? cuerpo
+            : $"{cuerpo[..longitudMaxima]}…";
+    }
+}

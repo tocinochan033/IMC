@@ -1,0 +1,77 @@
+@page "/mensaje/{Id}"
+@using IMC_.Models
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<VerMensaje> Logger
+
+<PageTitle>Mensaje</PageTitle>
+
+@if (isLoading)
+{
+    <p>Cargando mensaje...</p>
+}
+else if (!string.IsNullOrWhiteSpace(errorMessage))
+{
+    <p class="alert alert-danger" role="alert">@errorMessage</p>
+}
+else if (mensaje is null)
+{
+    <h1>Mensaje no encontrado</h1>
+}
+else
+{
+    <h1>@mensaje.Subject</h1>
+    <p><strong>Remitente:</strong> @mensaje.SenderId</p>
+    <p><strong>Asunto:</strong> @mensaje.Subject</p>
+    <p>@mensaje.Body</p>
+
+    <button type="button" class="btn btn-primary">Responder</button>
+    <button type="button" class="btn btn-secondary">Reenviar</button>
+}
+
+@code {
+    [Parameter]
+    public string Id { get; set; } = string.Empty;
+
+    private Message? mensaje;
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            mensaje = await SupabaseService.ObtenerMensajePorIdAsync(Id);
+            if (mensaje is not null)
+            {
+                var mailboxEntry = await SupabaseService.ObtenerEntradaInboxPorMensajeAsync(Id);
+                if (mailboxEntry is { IsRead: false })
+                {
+                    await SupabaseService.MarcarComoLeido(mailboxEntry.Id);
+                }
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para consultar el mensaje.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo cargar el mensaje desde Supabase.");
+            errorMessage = "No se pudo cargar el mensaje. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar el mensaje {MessageId}.", Id);
+            errorMessage = "Ocurrió un error al consultar el mensaje.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

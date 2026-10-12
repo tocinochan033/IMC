@@ -1,0 +1,58 @@
+@page "/papelera"
+@using IMC_.Models
+@inject FakeDataService FakeDataService
+@inject NavigationManager Navigation
+
+<PageTitle>Papelera</PageTitle>
+
+<h1>Papelera</h1>
+
+@if (mensajes.Count == 0)
+{
+    <p>No hay mensajes en la papelera.</p>
+}
+else
+{
+    <ul class="list-group">
+        @foreach (var mensaje in mensajes)
+        {
+            var noLeido = mensajesNoLeidos.Contains(mensaje.Id);
+            <li class="list-group-item p-0">
+                <button type="button"
+                        class="btn btn-link text-start text-decoration-none text-reset w-100 @(noLeido ? "fw-bold" : string.Empty)"
+                        @onclick="() => AbrirMensaje(mensaje.Id)">
+                    <span class="d-block">Remitente: @mensaje.SenderId</span>
+                    <span class="d-block">@mensaje.Subject</span>
+                    <span class="d-block fw-normal">@VistaPrevia(mensaje.Body)</span>
+                </button>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    private List<Message> mensajes = [];
+    private HashSet<Guid> mensajesNoLeidos = [];
+
+    protected override void OnInitialized()
+    {
+        mensajes = FakeDataService.ObtenerPapelera();
+        mensajesNoLeidos = FakeDataService.EntradasBandeja
+            .Where(entrada => entrada.Folder == "trash" && !entrada.IsRead)
+            .Select(entrada => entrada.MessageId)
+            .ToHashSet();
+    }
+
+    private void AbrirMensaje(Guid id)
+    {
+        Navigation.NavigateTo($"/mensaje/{id}");
+    }
+
+    private static string VistaPrevia(string cuerpo)
+    {
+        const int longitudMaxima = 120;
+        return cuerpo.Length <= longitudMaxima
+            ? cuerpo
+            : $"{cuerpo[..longitudMaxima]}…";
+    }
+}

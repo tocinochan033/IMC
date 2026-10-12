@@ -1,0 +1,218 @@
+using Supabase;
+using IMC_.Models;
+using Operator = Supabase.Postgrest.Constants.Operator;
+
+namespace IMC_.Services;
+
+public enum ResultadoEnvioCorreo
+{
+    Enviado,
+    DestinatarioNoValido
+}
+
+public class SupabaseService
+{
+    public Client Client { get; }
+    public Task Initialization { get; }
+
+    public SupabaseService(IConfiguration configuration)
+    {
+        var url = configuration["Supabase:Url"];
+        var apiKey = configuration["Supabase:ApiKey"];
+
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            throw new InvalidOperationException("Supabase:Url must be configured.");
+        }
+
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new InvalidOperationException("Supabase:ApiKey must be configured.");
+        }
+
+        Client = new Client(url, apiKey);
+        Initialization = Client.InitializeAsync();
+    }
+
+    public async Task SignInAsync(string email, string password)
+    {
+        await Initialization;
+        await Client.Auth.SignIn(email, password);
+
+        if (Client.Auth.CurrentSession?.User is null)
+        {
+            throw new InvalidOperationException("Supabase Auth no devolvió una sesión válida.");
+        }
+    }
+
+    public async Task SignOutAsync()
+    {
+        await Initialization;
+        await Client.Auth.SignOut();
+    }
+
+    public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerBandejaEntradaAsync() =>
+        ObtenerMensajesDeCarpetaAsync("inbox");
+
+    public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerEnviadosAsync() =>
+        ObtenerMensajesDeCarpetaAsync("sent");
+
+    private async Task<List<(MailboxEntry Entry, Message Message)>> ObtenerMensajesDeCarpetaAsync(string folder)
+    {
+        await Initialization;
+
+        var userId = Client.Auth.CurrentSession?.User?.Id;
+        if (!Guid.TryParse(userId, out var authenticatedUserId))
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para consultar la bandeja.");
+        }
+
+        var entriesResponse = await Client
+            .From<MailboxEntry>()
+            .Filter("user_id", Operator.Equals, authenticatedUserId.ToString())
+            .Filter("folder", Operator.Equals, folder)
+            .Get();
+
+        var entries = entriesResponse.Models;
+        if (entries.Count == 0)
+        {
+            return [];
+        }
+
+        var messageIds = entries
+            .Select(entry => entry.MessageId)
+            .Distinct()
+            .ToList();
+
+        var messagesResponse = await Client
+            .From<Message>()
+            .Where(message => messageIds.Contains(message.Id))
+            .Get();
+
+        var messagesById = messagesResponse.Models.ToDictionary(message => message.Id);
+
+        return entries
+            .Where(entry => messagesById.ContainsKey(entry.MessageId))
+            .Select(entry => (entry, messagesById[entry.MessageId]))
+            .ToList();
+    }
+
+    public async Task<Message?> ObtenerMensajePorIdAsync(string id)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(id, out var messageId))
+        {
+            return null;
+        }
+
+        if (Client.Auth.CurrentSession?.User is null)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para consultar el mensaje.");
+        }
+
+        var response = await Client
+            .From<Message>()
+            .Filter("id", Operator.Equals, messageId.ToString())
+            .Get();
+
+        return response.Models.FirstOrDefault();
+    }
+
+    public async Task<MailboxEntry?> ObtenerEntradaInboxPorMensajeAsync(string messageId)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(messageId, out var parsedMessageId) ||
+            !Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId))
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada y un ID de mensaje válido.");
+        }
+
+        var response = await Client
+            .From<MailboxEntry>()
+            .Filter("user_id", Operator.Equals, authenticatedUserId.ToString())
+            .Filter("message_id", Operator.Equals, parsedMessageId.ToString())
+            .Filter("folder", Operator.Equals, "inbox")
+            .Get();
+
+        return response.Models.FirstOrDefault();
+    }
+
+    public async Task MarcarComoLeido(Guid mailboxEntryId)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId))
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para actualizar la bandeja.");
+        }
+
+        await Client
+            .From<MailboxEntry>()
+            .Filter("id", Operator.Equals, mailboxEntryId.ToString())
+            .Filter("user_id", Operator.Equals, authenticatedUserId.ToString())
+            .Filter("folder", Operator.Equals, "inbox")
+            .Set(entry => entry.IsRead, true)
+            .Update();
+    }
+
+    public async Task MoverAPapelera(Guid mailboxEntryId)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId))
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para mover el mensaje.");
+        }
+
+        await Client
+            .From<MailboxEntry>()
+            .Filter("id", Operator.Equals, mailboxEntryId.ToString())
+            .Filter("user_id", Operator.Equals, authenticatedUserId.ToString())
+            .Set(entry => entry.Folder, "trash")
+            .Update();
+    }
+
+    public async Task<ResultadoEnvioCorreo> EnviarCorreo(
+        Guid senderId,
+        string destinatarioEmail,
+        string subject,
+        string body)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId) ||
+            authenticatedUserId != senderId)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada del remitente.");
+        }
+
+        var email = destinatarioEmail.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return ResultadoEnvioCorreo.DestinatarioNoValido;
+        }
+
+        var profileResponse = await Client
+            .From<Profile>()
+            .Filter("email", Operator.Equals, email)
+            .Get();
+
+        var recipient = profileResponse.Models.FirstOrDefault();
+        if (recipient is null)
+        {
+            return ResultadoEnvioCorreo.DestinatarioNoValido;
+        }
+
+        await Client.Rpc("send_email", new
+        {
+            p_sender_id = senderId,
+            p_recipient_id = recipient.Id,
+            p_subject = subject,
+            p_body = body
+        });
+
+        return ResultadoEnvioCorreo.Enviado;
+    }
+}
