@@ -1,4 +1,4 @@
-﻿@rendermode InteractiveServer
+﻿@rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 <Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">

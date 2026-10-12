@@ -1,0 +1,98 @@
+@page "/destacados"
+@using IMC_.Models
+@using IMC_.Services
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<Destacados> Logger
+
+<PageTitle>Destacados</PageTitle>
+
+<h1>Destacados</h1>
+
+@if (isLoading)
+{
+    <p>Cargando mensajes...</p>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <p class="alert alert-danger" role="alert">@errorMessage</p>
+    }
+
+    @if (mensajes.Count == 0)
+    {
+        <p>No hay mensajes destacados.</p>
+    }
+    else
+    {
+        <ul class="list-group">
+            @foreach (var mensaje in mensajes)
+            {
+                var noLeido = !mensaje.Entry.IsRead;
+                <li class="list-group-item d-flex align-items-center p-0">
+                    <button type="button"
+                            class="btn btn-link text-start text-decoration-none text-reset flex-grow-1 @(noLeido ? "fw-bold" : string.Empty)"
+                            @onclick="() => AbrirMensaje(mensaje.Message.Id)">
+                        <span class="d-block">Remitente: @mensaje.Message.SenderId</span>
+                        <span class="d-block">@mensaje.Message.Subject</span>
+                        <span class="d-block fw-normal">@VistaPrevia(mensaje.Message.Body)</span>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private List<(MailboxEntry Entry, Message Message)> mensajes = [];
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await SupabaseService.Initialization;
+            var userId = SupabaseService.Client.Auth.CurrentSession?.User?.Id;
+            if (!Guid.TryParse(userId, out var authenticatedUserId))
+            {
+                throw new InvalidOperationException("Se requiere una sesión autenticada para consultar los destacados.");
+            }
+
+            mensajes = await SupabaseService.ObtenerDestacados(authenticatedUserId);
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para consultar los destacados.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudieron cargar los mensajes destacados desde Supabase.");
+            errorMessage = "No se pudieron cargar los mensajes destacados. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar los destacados.");
+            errorMessage = "Ocurrió un error al consultar los mensajes destacados.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void AbrirMensaje(Guid id)
+    {
+        Navigation.NavigateTo($"/mensaje/{id}");
+    }
+
+    private static string VistaPrevia(string cuerpo)
+    {
+        const int longitudMaxima = 120;
+        return cuerpo.Length <= longitudMaxima
+            ? cuerpo
+            : $"{cuerpo[..longitudMaxima]}…";
+    }
+}

@@ -1,46 +1,79 @@
 @page "/papelera"
 @using IMC_.Models
-@inject FakeDataService FakeDataService
+@using IMC_.Services
+@inject SupabaseService SupabaseService
 @inject NavigationManager Navigation
+@inject ILogger<Papelera> Logger
 
 <PageTitle>Papelera</PageTitle>
 
 <h1>Papelera</h1>
 
-@if (mensajes.Count == 0)
+@if (isLoading)
 {
-    <p>No hay mensajes en la papelera.</p>
+    <p>Cargando mensajes...</p>
 }
 else
 {
-    <ul class="list-group">
-        @foreach (var mensaje in mensajes)
-        {
-            var noLeido = mensajesNoLeidos.Contains(mensaje.Id);
-            <li class="list-group-item p-0">
-                <button type="button"
-                        class="btn btn-link text-start text-decoration-none text-reset w-100 @(noLeido ? "fw-bold" : string.Empty)"
-                        @onclick="() => AbrirMensaje(mensaje.Id)">
-                    <span class="d-block">Remitente: @mensaje.SenderId</span>
-                    <span class="d-block">@mensaje.Subject</span>
-                    <span class="d-block fw-normal">@VistaPrevia(mensaje.Body)</span>
-                </button>
-            </li>
-        }
-    </ul>
+    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <p class="alert alert-danger" role="alert">@errorMessage</p>
+    }
+
+    @if (mensajes.Count == 0)
+    {
+        <p>No hay mensajes en la papelera.</p>
+    }
+    else
+    {
+        <ul class="list-group">
+            @foreach (var mensaje in mensajes)
+            {
+                var noLeido = !mensaje.Entry.IsRead;
+                <li class="list-group-item p-0">
+                    <button type="button"
+                            class="btn btn-link text-start text-decoration-none text-reset w-100 @(noLeido ? "fw-bold" : string.Empty)"
+                            @onclick="() => AbrirMensaje(mensaje.Message.Id)">
+                        <span class="d-block">Remitente: @mensaje.Message.SenderId</span>
+                        <span class="d-block">@mensaje.Message.Subject</span>
+                        <span class="d-block fw-normal">@VistaPrevia(mensaje.Message.Body)</span>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
 }
 
 @code {
-    private List<Message> mensajes = [];
-    private HashSet<Guid> mensajesNoLeidos = [];
+    private List<(MailboxEntry Entry, Message Message)> mensajes = [];
+    private bool isLoading = true;
+    private string? errorMessage;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        mensajes = FakeDataService.ObtenerPapelera();
-        mensajesNoLeidos = FakeDataService.EntradasBandeja
-            .Where(entrada => entrada.Folder == "trash" && !entrada.IsRead)
-            .Select(entrada => entrada.MessageId)
-            .ToHashSet();
+        try
+        {
+            mensajes = await SupabaseService.ObtenerPapeleraAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para consultar la papelera.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudieron cargar los mensajes de la papelera desde Supabase.");
+            errorMessage = "No se pudieron cargar los mensajes de la papelera. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar la papelera.");
+            errorMessage = "Ocurrió un error al consultar la papelera.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
     private void AbrirMensaje(Guid id)

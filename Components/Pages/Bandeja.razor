@@ -39,6 +39,18 @@ else
                         <span class="d-block fw-normal">@VistaPrevia(mensaje.Message.Body)</span>
                     </button>
                     <button type="button"
+                            class="btn @(mensaje.Entry.IsStarred ? "btn-warning" : "btn-outline-warning") me-2"
+                            aria-label="@(mensaje.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                            title="@(mensaje.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                            disabled="@togglingStarEntryIds.Contains(mensaje.Entry.Id)"
+                            @onclick="() => ToggleDestacado(mensaje.Entry)">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+                             fill="@(mensaje.Entry.IsStarred ? "currentColor" : "none")" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                    </button>
+                    <button type="button"
                             class="btn btn-outline-danger me-2"
                             aria-label="Mover a papelera"
                             title="Mover a papelera"
@@ -55,6 +67,7 @@ else
 @code {
     private List<(MailboxEntry Entry, Message Message)> mensajes = [];
     private HashSet<Guid> movingEntryIds = [];
+    private HashSet<Guid> togglingStarEntryIds = [];
     private bool isLoading = true;
     private string? errorMessage;
 
@@ -88,6 +101,41 @@ else
     private void AbrirMensaje(Guid id)
     {
         Navigation.NavigateTo($"/mensaje/{id}");
+    }
+
+    private async Task ToggleDestacado(MailboxEntry entry)
+    {
+        if (!togglingStarEntryIds.Add(entry.Id))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        var nuevoEstado = !entry.IsStarred;
+        try
+        {
+            await SupabaseService.ToggleDestacado(entry.Id, nuevoEstado);
+            entry.IsStarred = nuevoEstado;
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo actualizar el destacado para la entrada {MailboxEntryId}.", entry.Id);
+            errorMessage = "No se pudo actualizar el mensaje destacado. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó actualizar el destacado para la entrada {MailboxEntryId}.", entry.Id);
+            errorMessage = "No se pudo actualizar el mensaje destacado. Inténtalo de nuevo.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para actualizar el destacado de la entrada {MailboxEntryId}.", entry.Id);
+            Navigation.NavigateTo("/login");
+        }
+        finally
+        {
+            togglingStarEntryIds.Remove(entry.Id);
+        }
     }
 
     private async Task MoverAPapelera(Guid mailboxEntryId)

@@ -25,8 +25,8 @@ else
     <p><strong>Asunto:</strong> @mensaje.Subject</p>
     <p>@mensaje.Body</p>
 
-    <button type="button" class="btn btn-primary">Responder</button>
-    <button type="button" class="btn btn-secondary">Reenviar</button>
+    <button type="button" class="btn btn-primary" @onclick="Responder">Responder</button>
+    <button type="button" class="btn btn-secondary" @onclick="Reenviar">Reenviar</button>
 }
 
 @code {
@@ -47,6 +47,7 @@ else
             mensaje = await SupabaseService.ObtenerMensajePorIdAsync(Id);
             if (mensaje is not null)
             {
+                remitenteEmail = await SupabaseService.ObtenerEmailPerfilAsync(mensaje.SenderId);
                 var mailboxEntry = await SupabaseService.ObtenerEntradaInboxPorMensajeAsync(Id);
                 if (mailboxEntry is { IsRead: false })
                 {
@@ -73,5 +74,50 @@ else
         {
             isLoading = false;
         }
+    }
+
+    private string? remitenteEmail;
+
+    private void Responder()
+    {
+        if (mensaje is null || string.IsNullOrWhiteSpace(remitenteEmail))
+        {
+            errorMessage = "No se pudo obtener el correo del remitente para responder.";
+            return;
+        }
+
+        var subject = mensaje.Subject.StartsWith("Re: ", StringComparison.OrdinalIgnoreCase)
+            ? mensaje.Subject
+            : $"Re: {mensaje.Subject}";
+
+        NavigateToCompose(new Dictionary<string, object?>
+        {
+            ["destinatario"] = remitenteEmail,
+            ["asunto"] = subject,
+            ["parentMessageId"] = mensaje.Id
+        });
+    }
+
+    private void Reenviar()
+    {
+        if (mensaje is null)
+        {
+            return;
+        }
+
+        var subject = mensaje.Subject.StartsWith("Fwd: ", StringComparison.OrdinalIgnoreCase)
+            ? mensaje.Subject
+            : $"Fwd: {mensaje.Subject}";
+
+        NavigateToCompose(new Dictionary<string, object?>
+        {
+            ["asunto"] = subject,
+            ["cuerpo"] = $"---- Mensaje reenviado ----\n{mensaje.Body}"
+        });
+    }
+
+    private void NavigateToCompose(IReadOnlyDictionary<string, object?> queryParameters)
+    {
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("/redactar", queryParameters));
     }
 }

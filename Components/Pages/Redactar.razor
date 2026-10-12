@@ -34,11 +34,30 @@
 </button>
 
 @code {
+    [SupplyParameterFromQuery(Name = "destinatario")]
+    public string? DestinatarioInicial { get; set; }
+
+    [SupplyParameterFromQuery(Name = "asunto")]
+    public string? AsuntoInicial { get; set; }
+
+    [SupplyParameterFromQuery(Name = "cuerpo")]
+    public string? CuerpoInicial { get; set; }
+
+    [SupplyParameterFromQuery(Name = "parentMessageId")]
+    public Guid? ParentMessageId { get; set; }
+
     private string Destinatario { get; set; } = string.Empty;
     private string Asunto { get; set; } = string.Empty;
     private string Cuerpo { get; set; } = string.Empty;
     private bool isSending;
     private string? errorMessage;
+
+    protected override void OnParametersSet()
+    {
+        Destinatario = DestinatarioInicial ?? string.Empty;
+        Asunto = AsuntoInicial ?? string.Empty;
+        Cuerpo = CuerpoInicial ?? string.Empty;
+    }
 
     private async Task Enviar()
     {
@@ -58,7 +77,12 @@
                 return;
             }
 
-            var result = await SupabaseService.EnviarCorreo(senderId, Destinatario, Asunto, Cuerpo);
+            var result = await SupabaseService.EnviarCorreo(
+                senderId,
+                Destinatario,
+                Asunto,
+                Cuerpo,
+                ParentMessageId);
             if (result == ResultadoEnvioCorreo.DestinatarioNoValido)
             {
                 errorMessage = "No existe un usuario con ese correo destinatario.";

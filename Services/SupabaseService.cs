@@ -13,9 +13,10 @@ public enum ResultadoEnvioCorreo
 public class SupabaseService
 {
     public Client Client { get; }
-    public Task Initialization { get; }
+    private readonly Lazy<Task> initialization;
+    public Task Initialization => initialization.Value;
 
-    public SupabaseService(IConfiguration configuration)
+    public SupabaseService(IConfiguration configuration, SupabaseSessionPersistence sessionPersistence)
     {
         var url = configuration["Supabase:Url"];
         var apiKey = configuration["Supabase:ApiKey"];
@@ -30,8 +31,11 @@ public class SupabaseService
             throw new InvalidOperationException("Supabase:ApiKey must be configured.");
         }
 
-        Client = new Client(url, apiKey);
-        Initialization = Client.InitializeAsync();
+        Client = new Client(url, apiKey, new SupabaseOptions
+        {
+            SessionHandler = sessionPersistence
+        });
+        initialization = new Lazy<Task>(Client.InitializeAsync);
     }
 
     public async Task SignInAsync(string email, string password)
@@ -57,6 +61,28 @@ public class SupabaseService
     public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerEnviadosAsync() =>
         ObtenerMensajesDeCarpetaAsync("sent");
 
+    public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerPapeleraAsync() =>
+        ObtenerMensajesDeCarpetaAsync("trash");
+
+    public async Task<List<(MailboxEntry Entry, Message Message)>> ObtenerDestacados(Guid userId)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId) ||
+            authenticatedUserId != userId)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para consultar los destacados.");
+        }
+
+        var entriesResponse = await Client
+            .From<MailboxEntry>()
+            .Filter("user_id", Operator.Equals, userId.ToString())
+            .Filter("is_starred", Operator.Equals, "true")
+            .Get();
+
+        return await ObtenerMensajesDeEntradasAsync(entriesResponse.Models);
+    }
+
     private async Task<List<(MailboxEntry Entry, Message Message)>> ObtenerMensajesDeCarpetaAsync(string folder)
     {
         await Initialization;
@@ -73,7 +99,12 @@ public class SupabaseService
             .Filter("folder", Operator.Equals, folder)
             .Get();
 
-        var entries = entriesResponse.Models;
+        return await ObtenerMensajesDeEntradasAsync(entriesResponse.Models);
+    }
+
+    private async Task<List<(MailboxEntry Entry, Message Message)>> ObtenerMensajesDeEntradasAsync(
+        List<MailboxEntry> entries)
+    {
         if (entries.Count == 0)
         {
             return [];
@@ -97,6 +128,23 @@ public class SupabaseService
             .ToList();
     }
 
+    public async Task ToggleDestacado(Guid mailboxEntryId, bool nuevoEstado)
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId))
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para actualizar los destacados.");
+        }
+
+        await Client
+            .From<MailboxEntry>()
+            .Filter("id", Operator.Equals, mailboxEntryId.ToString())
+            .Filter("user_id", Operator.Equals, authenticatedUserId.ToString())
+            .Set(entry => entry.IsStarred, nuevoEstado)
+            .Update();
+    }
+
     public async Task<Message?> ObtenerMensajePorIdAsync(string id)
     {
         await Initialization;
@@ -117,6 +165,23 @@ public class SupabaseService
             .Get();
 
         return response.Models.FirstOrDefault();
+    }
+
+    public async Task<string?> ObtenerEmailPerfilAsync(Guid profileId)
+    {
+        await Initialization;
+
+        if (Client.Auth.CurrentSession?.User is null)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para consultar el perfil.");
+        }
+
+        var response = await Client
+            .From<Profile>()
+            .Filter("id", Operator.Equals, profileId.ToString())
+            .Get();
+
+        return response.Models.FirstOrDefault()?.Email;
     }
 
     public async Task<MailboxEntry?> ObtenerEntradaInboxPorMensajeAsync(string messageId)
@@ -178,7 +243,8 @@ public class SupabaseService
         Guid senderId,
         string destinatarioEmail,
         string subject,
-        string body)
+        string body,
+        Guid? parentMessageId = null)
     {
         await Initialization;
 
@@ -210,7 +276,8 @@ public class SupabaseService
             p_sender_id = senderId,
             p_recipient_id = recipient.Id,
             p_subject = subject,
-            p_body = body
+            p_body = body,
+            p_parent_message_id = parentMessageId
         });
 
         return ResultadoEnvioCorreo.Enviado;
