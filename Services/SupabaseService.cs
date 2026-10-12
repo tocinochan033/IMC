@@ -83,6 +83,84 @@ public class SupabaseService
         return await ObtenerMensajesDeEntradasAsync(entriesResponse.Models);
     }
 
+    public async Task<List<(MailboxEntry Entry, Message Message)>> BuscarMensajes(
+        Guid userId,
+        string termino,
+        string folder = "inbox")
+    {
+        await Initialization;
+
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var authenticatedUserId) ||
+            authenticatedUserId != userId)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
+        }
+
+        if (folder is not ("inbox" or "sent" or "starred"))
+        {
+            throw new ArgumentException("La carpeta de búsqueda no es válida.", nameof(folder));
+        }
+
+        var entriesQuery = Client
+            .From<MailboxEntry>()
+            .Filter("user_id", Operator.Equals, userId.ToString());
+
+        if (folder == "starred")
+        {
+            entriesQuery = entriesQuery.Filter("is_starred", Operator.Equals, "true");
+        }
+        else
+        {
+            entriesQuery = entriesQuery.Filter("folder", Operator.Equals, folder);
+        }
+
+        var entriesResponse = await entriesQuery.Get();
+        var entries = entriesResponse.Models;
+        if (entries.Count == 0)
+        {
+            return [];
+        }
+
+        var messageIds = entries.Select(entry => entry.MessageId).Distinct().ToList();
+        var pattern = $"%{EscaparPatronIlike(termino.Trim())}%";
+
+        var subjectMatches = await Client
+            .From<Message>()
+            .Where(message => messageIds.Contains(message.Id))
+            .Filter("subject", Operator.ILike, pattern)
+            .Get();
+
+        var senderProfiles = await Client
+            .From<Profile>()
+            .Filter("full_name", Operator.ILike, pattern)
+            .Get();
+
+        var senderIds = senderProfiles.Models
+            .Select(profile => profile.Id)
+            .Distinct()
+            .ToList();
+
+        var senderMatches = senderIds.Count == 0
+            ? []
+            : (await Client
+                .From<Message>()
+                .Where(message => messageIds.Contains(message.Id))
+                .Where(message => senderIds.Contains(message.SenderId))
+                .Get()).Models;
+
+        var matchedMessages = subjectMatches.Models
+            .Concat(senderMatches)
+            .DistinctBy(message => message.Id)
+            .ToList();
+
+        return CombinarEntradasConMensajes(entries, matchedMessages);
+    }
+
+    private static string EscaparPatronIlike(string value) =>
+        value.Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("%", "\\%", StringComparison.Ordinal)
+            .Replace("_", "\\_", StringComparison.Ordinal);
+
     private async Task<List<(MailboxEntry Entry, Message Message)>> ObtenerMensajesDeCarpetaAsync(string folder)
     {
         await Initialization;
@@ -120,8 +198,14 @@ public class SupabaseService
             .Where(message => messageIds.Contains(message.Id))
             .Get();
 
-        var messagesById = messagesResponse.Models.ToDictionary(message => message.Id);
+        return CombinarEntradasConMensajes(entries, messagesResponse.Models);
+    }
 
+    private static List<(MailboxEntry Entry, Message Message)> CombinarEntradasConMensajes(
+        List<MailboxEntry> entries,
+        List<Message> messages)
+    {
+        var messagesById = messages.ToDictionary(message => message.Id);
         return entries
             .Where(entry => messagesById.ContainsKey(entry.MessageId))
             .Select(entry => (entry, messagesById[entry.MessageId]))

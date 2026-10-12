@@ -9,6 +9,12 @@
 
 <h1>Destacados</h1>
 
+<div class="mb-3">
+    <label for="buscar-destacados" class="form-label">Buscar por asunto o remitente</label>
+    <input id="buscar-destacados" type="search" class="form-control" placeholder="Buscar mensajes..."
+           value="@terminoBusqueda" @oninput="BuscarMensajes" />
+</div>
+
 @if (isLoading)
 {
     <p>Cargando mensajes...</p>
@@ -47,7 +53,9 @@ else
 @code {
     private List<(MailboxEntry Entry, Message Message)> mensajes = [];
     private bool isLoading = true;
+    private string terminoBusqueda = string.Empty;
     private string? errorMessage;
+    private int searchRequestId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -86,6 +94,56 @@ else
     private void AbrirMensaje(Guid id)
     {
         Navigation.NavigateTo($"/mensaje/{id}");
+    }
+
+    private async Task BuscarMensajes(ChangeEventArgs args)
+    {
+        terminoBusqueda = args.Value?.ToString() ?? string.Empty;
+        var requestId = ++searchRequestId;
+        errorMessage = null;
+
+        try
+        {
+            List<(MailboxEntry Entry, Message Message)> resultados;
+            await SupabaseService.Initialization;
+            if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+            {
+                throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
+            }
+
+            resultados = string.IsNullOrWhiteSpace(terminoBusqueda)
+                ? await SupabaseService.ObtenerDestacados(userId)
+                : await SupabaseService.BuscarMensajes(userId, terminoBusqueda, "starred");
+
+            if (requestId == searchRequestId)
+            {
+                mensajes = resultados;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogWarning(exception, "No hay una sesión válida para buscar en los destacados.");
+                Navigation.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "No se pudieron buscar mensajes destacados desde Supabase.");
+                errorMessage = "No se pudieron buscar los mensajes destacados. Inténtalo de nuevo.";
+            }
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "Supabase devolvió un error al buscar en los destacados.");
+                errorMessage = "Ocurrió un error al buscar en los mensajes destacados.";
+            }
+        }
     }
 
     private static string VistaPrevia(string cuerpo)

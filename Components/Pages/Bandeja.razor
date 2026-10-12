@@ -9,6 +9,12 @@
 
 <h1>Bandeja de entrada</h1>
 
+<div class="mb-3">
+    <label for="buscar-bandeja" class="form-label">Buscar por asunto o remitente</label>
+    <input id="buscar-bandeja" type="search" class="form-control" placeholder="Buscar mensajes..."
+           value="@terminoBusqueda" @oninput="BuscarMensajes" />
+</div>
+
 @if (isLoading)
 {
     <p>Cargando mensajes...</p>
@@ -69,7 +75,9 @@ else
     private HashSet<Guid> movingEntryIds = [];
     private HashSet<Guid> togglingStarEntryIds = [];
     private bool isLoading = true;
+    private string terminoBusqueda = string.Empty;
     private string? errorMessage;
+    private int searchRequestId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -101,6 +109,61 @@ else
     private void AbrirMensaje(Guid id)
     {
         Navigation.NavigateTo($"/mensaje/{id}");
+    }
+
+    private async Task BuscarMensajes(ChangeEventArgs args)
+    {
+        terminoBusqueda = args.Value?.ToString() ?? string.Empty;
+        var requestId = ++searchRequestId;
+        errorMessage = null;
+
+        try
+        {
+            List<(MailboxEntry Entry, Message Message)> resultados;
+            if (string.IsNullOrWhiteSpace(terminoBusqueda))
+            {
+                resultados = await SupabaseService.ObtenerBandejaEntradaAsync();
+            }
+            else
+            {
+                await SupabaseService.Initialization;
+                if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+                {
+                    throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
+                }
+
+                resultados = await SupabaseService.BuscarMensajes(userId, terminoBusqueda, "inbox");
+            }
+
+            if (requestId == searchRequestId)
+            {
+                mensajes = resultados;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogWarning(exception, "No hay una sesión válida para buscar en la bandeja.");
+                Navigation.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "No se pudo buscar en la bandeja desde Supabase.");
+                errorMessage = "No se pudo buscar en la bandeja. Inténtalo de nuevo.";
+            }
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "Supabase devolvió un error al buscar en la bandeja.");
+                errorMessage = "Ocurrió un error al buscar tus mensajes.";
+            }
+        }
     }
 
     private async Task ToggleDestacado(MailboxEntry entry)
