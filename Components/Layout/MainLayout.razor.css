@@ -1,79 +1,71 @@
-.page {
-    position: relative;
+.mail-app {
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
+    background: #FFFFFF;
+    color: #26323C;
+    font-family: Inter, system-ui, "Segoe UI", sans-serif;
 }
 
-main {
+.app-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: 64px;
+    flex: 0 0 64px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border-bottom: 1px solid #D5DBE0;
+    background: #FFFFFF;
+}
+
+.app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: #26323C;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.app-brand:hover {
+    color: #2C5F8A;
+}
+
+.brand-icon {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: #2C5F8A;
+}
+
+.brand-icon svg {
+    width: 21px;
+    stroke: #FFFFFF;
+    stroke-width: 1.4;
+}
+
+.app-workspace {
+    min-height: calc(100vh - 64px);
+    display: flex;
     flex: 1;
 }
 
 .sidebar {
-    background-image: linear-gradient(180deg, rgb(5, 39, 103) 0%, #3a0647 70%);
+    width: 236px;
+    flex: 0 0 236px;
+    border-right: 1px solid #D5DBE0;
+    background: #FFFFFF;
 }
 
-.top-row {
-    background-color: #f7f7f7;
-    border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
-    height: 3.5rem;
-    display: flex;
-    align-items: center;
-}
-
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        white-space: nowrap;
-        margin-left: 1.5rem;
-        text-decoration: none;
-    }
-
-    .top-row ::deep a:hover, .top-row ::deep .btn-link:hover {
-        text-decoration: underline;
-    }
-
-    .top-row ::deep a:first-child {
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-@media (max-width: 640.98px) {
-    .top-row {
-        justify-content: space-between;
-    }
-
-    .top-row ::deep a, .top-row ::deep .btn-link {
-        margin-left: 0;
-    }
-}
-
-@media (min-width: 641px) {
-    .page {
-        flex-direction: row;
-    }
-
-    .sidebar {
-        width: 250px;
-        height: 100vh;
-        position: sticky;
-        top: 0;
-    }
-
-    .top-row {
-        position: sticky;
-        top: 0;
-        z-index: 1;
-    }
-
-    .top-row.auth ::deep a:first-child {
-        flex: 1;
-        text-align: right;
-        width: 0;
-    }
-
-    .top-row, article {
-        padding-left: 2rem !important;
-        padding-right: 1.5rem !important;
-    }
+.main-content {
+    min-width: 0;
+    flex: 1;
+    background: #FFFFFF;
 }
 
 #blazor-error-ui {
@@ -90,9 +82,21 @@ main {
     z-index: 1000;
 }
 
-    #blazor-error-ui .dismiss {
-        cursor: pointer;
-        position: absolute;
-        right: 0.75rem;
-        top: 0.5rem;
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+@media (max-width: 700px) {
+    .app-workspace {
+        display: block;
     }
+
+    .sidebar {
+        width: auto;
+        border-right: 0;
+        border-bottom: 1px solid #D5DBE0;
+    }
+}

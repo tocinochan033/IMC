@@ -7,59 +7,19 @@
 
 <PageTitle>Enviados</PageTitle>
 
-<h1>Enviados</h1>
-
-<div class="mb-3">
-    <label for="buscar-enviados" class="form-label">Buscar por asunto o remitente</label>
-    <input id="buscar-enviados" type="search" class="form-control" placeholder="Buscar mensajes..."
-           value="@terminoBusqueda" @oninput="BuscarMensajes" />
-</div>
-
-@if (isLoading)
-{
-    <p>Cargando mensajes...</p>
-}
-else
-{
-    @if (!string.IsNullOrWhiteSpace(errorMessage))
-    {
-        <p class="alert alert-danger" role="alert">@errorMessage</p>
-    }
-
-    @if (mensajes.Count == 0)
-    {
-        <p>No hay mensajes enviados.</p>
-    }
-    else
-    {
-        <ul class="list-group">
-            @foreach (var mensaje in mensajes)
-            {
-                <li class="list-group-item d-flex align-items-center p-0">
-                    <button type="button"
-                            class="btn btn-link text-start text-decoration-none text-reset flex-grow-1"
-                            @onclick="() => AbrirMensaje(mensaje.Message.Id)">
-                        <span class="d-block">Remitente: @mensaje.Message.SenderId</span>
-                        <span class="d-block">@mensaje.Message.Subject</span>
-                        <span class="d-block">@VistaPrevia(mensaje.Message.Body)</span>
-                    </button>
-                    <button type="button"
-                            class="btn btn-outline-danger me-2"
-                            aria-label="Mover a papelera"
-                            title="Mover a papelera"
-                            disabled="@movingEntryIds.Contains(mensaje.Entry.Id)"
-                            @onclick="() => MoverAPapelera(mensaje.Entry.Id)">
-                        Eliminar
-                    </button>
-                </li>
-            }
-        </ul>
-    }
-}
+<MailboxFolderView Title="Enviados"
+                   EmptyText="No hay mensajes enviados."
+                   SearchInputId="buscar-enviados"
+                   Messages="@mensajes"
+                   IsLoading="@isLoading"
+                   ErrorMessage="@errorMessage"
+                   SearchTerm="@terminoBusqueda"
+                   SearchTermChanged="@BuscarMensajes"
+                   ShowDelete="true"
+                   OnMoveToTrash="@MoverAPapelera" />
 
 @code {
     private List<(MailboxEntry Entry, Message Message)> mensajes = [];
-    private HashSet<Guid> movingEntryIds = [];
     private bool isLoading = true;
     private string terminoBusqueda = string.Empty;
     private string? errorMessage;
@@ -92,21 +52,16 @@ else
         }
     }
 
-    private void AbrirMensaje(Guid id)
+    private async Task BuscarMensajes(string termino)
     {
-        Navigation.NavigateTo($"/mensaje/{id}");
-    }
-
-    private async Task BuscarMensajes(ChangeEventArgs args)
-    {
-        terminoBusqueda = args.Value?.ToString() ?? string.Empty;
+        terminoBusqueda = termino;
         var requestId = ++searchRequestId;
         errorMessage = null;
 
         try
         {
             List<(MailboxEntry Entry, Message Message)> resultados;
-            if (string.IsNullOrWhiteSpace(terminoBusqueda))
+            if (string.IsNullOrWhiteSpace(termino))
             {
                 resultados = await SupabaseService.ObtenerEnviadosAsync();
             }
@@ -118,7 +73,7 @@ else
                     throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
                 }
 
-                resultados = await SupabaseService.BuscarMensajes(userId, terminoBusqueda, "sent");
+                resultados = await SupabaseService.BuscarMensajes(userId, termino, "sent");
             }
 
             if (requestId == searchRequestId)
@@ -154,16 +109,16 @@ else
 
     private async Task MoverAPapelera(Guid mailboxEntryId)
     {
-        if (!movingEntryIds.Add(mailboxEntryId))
-        {
-            return;
-        }
-
         errorMessage = null;
         try
         {
             await SupabaseService.MoverAPapelera(mailboxEntryId);
-            mensajes.RemoveAll(mensaje => mensaje.Entry.Id == mailboxEntryId);
+            mensajes.RemoveAll(item => item.Entry.Id == mailboxEntryId);
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para mover la entrada {MailboxEntryId}.", mailboxEntryId);
+            Navigation.NavigateTo("/login");
         }
         catch (HttpRequestException exception)
         {
@@ -175,22 +130,5 @@ else
             Logger.LogError(exception, "Supabase rechazó mover la entrada {MailboxEntryId} a la papelera.", mailboxEntryId);
             errorMessage = "No se pudo mover el mensaje a la papelera. Inténtalo de nuevo.";
         }
-        catch (InvalidOperationException exception)
-        {
-            Logger.LogWarning(exception, "La sesión no es válida para mover la entrada {MailboxEntryId}.", mailboxEntryId);
-            Navigation.NavigateTo("/login");
-        }
-        finally
-        {
-            movingEntryIds.Remove(mailboxEntryId);
-        }
-    }
-
-    private static string VistaPrevia(string cuerpo)
-    {
-        const int longitudMaxima = 120;
-        return cuerpo.Length <= longitudMaxima
-            ? cuerpo
-            : $"{cuerpo[..longitudMaxima]}…";
     }
 }

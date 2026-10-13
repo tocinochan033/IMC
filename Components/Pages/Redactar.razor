@@ -7,31 +7,58 @@
 
 <PageTitle>Nuevo mensaje</PageTitle>
 
-<h1>Nuevo mensaje</h1>
+<section class="compose-page" aria-labelledby="compose-title">
+    <header class="compose-header">
+        <div class="compose-heading">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+            </svg>
+            <h1 id="compose-title">Redactar mensaje</h1>
+        </div>
+    </header>
 
-<div class="mb-3">
-    <label for="destinatario" class="form-label">Destinatario</label>
-    <input id="destinatario" type="text" class="form-control" @bind="Destinatario" />
-</div>
+    <form class="compose-form" @onsubmit="Enviar" @onsubmit:preventDefault>
+        <div class="compose-field">
+            <label for="destinatario">Para</label>
+            <input id="destinatario" type="email" autocomplete="email" placeholder="Correo del destinatario"
+                   @bind="Destinatario" required />
+        </div>
 
-<div class="mb-3">
-    <label for="asunto" class="form-label">Asunto</label>
-    <input id="asunto" type="text" class="form-control" @bind="Asunto" />
-</div>
+        <div class="compose-field">
+            <label for="asunto">Asunto</label>
+            <input id="asunto" type="text" placeholder="Asunto del mensaje" @bind="Asunto" />
+        </div>
 
-<div class="mb-3">
-    <label for="cuerpo" class="form-label">Mensaje</label>
-    <textarea id="cuerpo" class="form-control" rows="8" @bind="Cuerpo"></textarea>
-</div>
+        <div class="compose-body">
+            <label class="visually-hidden" for="cuerpo">Mensaje</label>
+            <textarea id="cuerpo" placeholder="Escribe tu mensaje..." @bind="Cuerpo" required></textarea>
+        </div>
 
-@if (!string.IsNullOrWhiteSpace(errorMessage))
-{
-    <p class="alert alert-danger" role="alert">@errorMessage</p>
-}
+        @if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            <p class="compose-error" role="alert">@errorMessage</p>
+        }
 
-<button type="button" class="btn btn-primary" @onclick="Enviar" disabled="@isSending">
-    @(isSending ? "Enviando..." : "Enviar")
-</button>
+        <footer class="compose-footer">
+            <button type="submit" class="compose-send" disabled="@isSending">
+                @if (isSending)
+                {
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    <span>Enviando...</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="m22 2-7 20-4-9-9-4Z" />
+                        <path d="M22 2 11 13" />
+                    </svg>
+                    <span>Enviar</span>
+                }
+            </button>
+        </footer>
+    </form>
+</section>
 
 @code {
     [SupplyParameterFromQuery(Name = "destinatario")]

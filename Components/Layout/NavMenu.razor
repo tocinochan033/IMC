@@ -3,65 +3,72 @@
 @inject ILogger<NavMenu> Logger
 @using Supabase.Gotrue.Exceptions
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href=""></a>
-    </div>
-</div>
+<div class="mail-navigation">
+    <input id="navigation-toggle" type="checkbox" class="navigation-toggle" aria-label="Mostrar navegación" />
+    <label for="navigation-toggle" class="navigation-toggle-label">
+        <span></span>
+        <span></span>
+        <span></span>
+    </label>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+    <div class="nav-content">
+        <NavLink class="compose-link" href="/redactar">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
+            </svg>
+            <span>Nuevo mensaje</span>
+        </NavLink>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="nav flex-column">
-        <div class="nav-item px-3">
+        <nav class="nav flex-column" aria-label="Carpetas">
             <NavLink class="nav-link" href="/bandeja">
-                Bandeja de entrada
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M4 5h16l2 7v7H2v-7l2-7Z" />
+                    <path d="M2 12h6l2 3h4l2-3h6" />
+                </svg>
+                <span>Bandeja de entrada</span>
             </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
             <NavLink class="nav-link" href="/destacados">
-                Destacados
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9L12 3Z" />
+                </svg>
+                <span>Destacados</span>
             </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
             <NavLink class="nav-link" href="/enviados">
-                Enviados
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="m22 2-7 20-4-9-9-4Z" />
+                    <path d="M22 2 11 13" />
+                </svg>
+                <span>Enviados</span>
             </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
             <NavLink class="nav-link" href="/papelera">
-                Papelera
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                </svg>
+                <span>Papelera</span>
             </NavLink>
-        </div>
+        </nav>
 
-        <div class="nav-item px-3">
-            <NavLink class="nav-link btn btn-primary" href="/redactar">
-                Nuevo mensaje
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
+        <div class="sign-out-area">
             @if (confirmSignOut)
             {
-                <span class="nav-link">¿Deseas cerrar sesión?</span>
-                <button type="button" class="btn btn-link nav-link" @onclick="SignOut" disabled="@isSigningOut">
+                <span class="sign-out-prompt">¿Deseas cerrar sesión?</span>
+                <button type="button" class="sign-out-button" @onclick="SignOut" disabled="@isSigningOut">
                     @(isSigningOut ? "Cerrando..." : "Sí, cerrar sesión")
                 </button>
-                <button type="button" class="btn btn-link nav-link" @onclick="CancelSignOut">Cancelar</button>
+                <button type="button" class="sign-out-button" @onclick="CancelSignOut">Cancelar</button>
                 @if (!string.IsNullOrWhiteSpace(signOutError))
                 {
-                    <span class="nav-link text-danger">@signOutError</span>
+                    <span class="sign-out-error" role="alert">@signOutError</span>
                 }
             }
             else
             {
-                <button type="button" class="btn btn-link nav-link" @onclick="RequestSignOut">Cerrar sesión</button>
+                <button type="button" class="sign-out-button" @onclick="RequestSignOut">Cerrar sesión</button>
             }
         </div>
-    </nav>
+    </div>
 </div>
 
 @code {

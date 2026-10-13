@@ -1,0 +1,365 @@
+@using IMC_.Models
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<MailboxFolderView> Logger
+
+<section class="folder-page" aria-labelledby="folder-title">
+    <header class="folder-header">
+        <h1 id="folder-title">@Title</h1>
+        <label class="folder-search" for="@SearchInputId">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m16 16 4 4" />
+            </svg>
+            <span class="visually-hidden">Buscar por asunto o remitente</span>
+            <input id="@SearchInputId" type="search" placeholder="Buscar correo, remitente o asunto"
+                   value="@SearchTerm" @oninput="HandleSearch" />
+        </label>
+    </header>
+
+    @if (IsLoading)
+    {
+        <p class="folder-status">Cargando mensajes...</p>
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <p class="folder-error" role="alert">@ErrorMessage</p>
+        }
+
+        <div class="folder-split @(selectedMessage is not null ? "has-selection" : string.Empty)">
+            <section class="folder-list-pane" aria-label="Lista de mensajes">
+                @if (Messages.Count == 0)
+                {
+                    <p class="folder-status">@EmptyText</p>
+                }
+                else
+                {
+                    <ul class="folder-message-list">
+                        @foreach (var item in Messages)
+                        {
+                            var isUnread = !item.Entry.IsRead;
+                            var isSelected = selectedMessage?.Entry.Id == item.Entry.Id;
+                            <li class="folder-message-row @(isUnread ? "unread" : string.Empty) @(isSelected ? "selected" : string.Empty)">
+                                <button type="button" class="folder-message-open"
+                                        aria-current="@(isSelected ? "true" : null)"
+                                        @onclick="() => SelectMessage(item)">
+                                    <span class="folder-message-sender">@SenderName(item.Message.SenderId)</span>
+                                    <span class="folder-message-subject">@item.Message.Subject</span>
+                                    <span class="folder-message-preview">@Preview(item.Message.Body)</span>
+                                </button>
+                                @if (ShowStar)
+                                {
+                                    <button type="button"
+                                            class="folder-action folder-star @(item.Entry.IsStarred ? "is-starred" : string.Empty)"
+                                            aria-label="@(item.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                                            title="@(item.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                                            disabled="@busyEntryIds.Contains(item.Entry.Id)"
+                                            @onclick="() => ToggleStar(item.Entry)">
+                                        <svg viewBox="0 0 24 24" fill="@(item.Entry.IsStarred ? "currentColor" : "none")"
+                                             stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                                             stroke-linejoin="round" aria-hidden="true">
+                                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                        </svg>
+                                    </button>
+                                }
+                                @if (ShowDelete)
+                                {
+                                    <button type="button" class="folder-action folder-delete"
+                                            aria-label="Mover a papelera" title="Mover a papelera"
+                                            disabled="@busyEntryIds.Contains(item.Entry.Id)"
+                                            @onclick="() => MoveToTrash(item.Entry.Id)">
+                                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                            <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                                        </svg>
+                                    </button>
+                                }
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="folder-detail" aria-label="Mensaje seleccionado">
+                @if (selectedMessage is { } selected)
+                {
+                    @if (!string.IsNullOrWhiteSpace(detailError))
+                    {
+                        <p class="folder-error" role="alert">@detailError</p>
+                    }
+                    <header class="folder-detail-header">
+                        <h2>@selected.Message.Subject</h2>
+                    </header>
+                    <div class="folder-detail-sender">
+                        <div class="folder-avatar" aria-hidden="true">@Initials(senderName)</div>
+                        <div class="folder-sender-summary">
+                            <strong>@senderName</strong>
+                            <span>@senderEmail</span>
+                        </div>
+                        <time datetime="@selected.Message.CreatedAt.ToString("O")">
+                            @selected.Message.CreatedAt.ToLocalTime().ToString("dd MMM yyyy, HH:mm")
+                        </time>
+                    </div>
+                    <article class="folder-detail-body">@selected.Message.Body</article>
+                    <div class="folder-detail-actions">
+                        <button type="button" class="folder-detail-button primary" @onclick="Reply">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M9 14 4 9l5-5" />
+                                <path d="M4 9h10a6 6 0 0 1 0 12h-2" />
+                            </svg>
+                            Responder
+                        </button>
+                        <button type="button" class="folder-detail-button" @onclick="Forward">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="m15 14 5-5-5-5" />
+                                <path d="M20 9H10a6 6 0 0 0 0 12h2" />
+                            </svg>
+                            Reenviar
+                        </button>
+                    </div>
+                }
+                else
+                {
+                    <div class="folder-empty-detail">
+                        <span>Selecciona un mensaje para leerlo</span>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string EmptyText { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string SearchInputId { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public List<(MailboxEntry Entry, Message Message)> Messages { get; set; } = [];
+
+    [Parameter]
+    public bool IsLoading { get; set; }
+
+    [Parameter]
+    public string? ErrorMessage { get; set; }
+
+    [Parameter]
+    public string SearchTerm { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool ShowStar { get; set; }
+
+    [Parameter]
+    public bool ShowDelete { get; set; }
+
+    [Parameter]
+    public EventCallback<string> SearchTermChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<MailboxEntry> OnToggleStar { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> OnMoveToTrash { get; set; }
+
+    private readonly HashSet<Guid> busyEntryIds = [];
+    private Dictionary<Guid, string> senderNames = [];
+    private (MailboxEntry Entry, Message Message)? selectedMessage;
+    private string senderName = "Remitente";
+    private string senderEmail = string.Empty;
+    private string? detailError;
+    private string senderIdsKey = string.Empty;
+    private int selectionRequestId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (selectedMessage is { } selected &&
+            Messages.All(item => item.Entry.Id != selected.Entry.Id))
+        {
+            selectionRequestId++;
+            selectedMessage = null;
+        }
+
+        var currentSenderIdsKey = string.Join(
+            ',',
+            Messages.Select(item => item.Message.SenderId).Distinct().Order().Select(id => id.ToString()));
+        if (IsLoading || currentSenderIdsKey == senderIdsKey)
+        {
+            return;
+        }
+
+        senderIdsKey = currentSenderIdsKey;
+        try
+        {
+            senderNames = await SupabaseService.ObtenerNombresRemitentesAsync(
+                Messages.Select(item => item.Message.SenderId));
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para cargar los remitentes de {Folder}.", Title);
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudieron cargar los remitentes de {Folder}.", Title);
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al cargar los remitentes de {Folder}.", Title);
+        }
+    }
+
+    private Task HandleSearch(ChangeEventArgs args) =>
+        SearchTermChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+
+    private async Task SelectMessage((MailboxEntry Entry, Message Message) item)
+    {
+        var requestId = ++selectionRequestId;
+        selectedMessage = item;
+        senderName = SenderName(item.Message.SenderId);
+        senderEmail = string.Empty;
+        detailError = null;
+
+        try
+        {
+            var profile = await SupabaseService.ObtenerPerfilPorIdAsync(item.Message.SenderId);
+            if (requestId != selectionRequestId)
+            {
+                return;
+            }
+
+            if (profile is not null)
+            {
+                senderName = string.IsNullOrWhiteSpace(profile.FullName) ? profile.Email : profile.FullName;
+                senderEmail = profile.Email;
+                senderNames[profile.Id] = senderName;
+            }
+
+            if (item.Entry.Folder == "inbox" && !item.Entry.IsRead)
+            {
+                await SupabaseService.MarcarComoLeido(item.Entry.Id);
+                item.Entry.IsRead = true;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para abrir el mensaje {MessageId}.", item.Message.Id);
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo cargar el remitente del mensaje {MessageId}.", item.Message.Id);
+            detailError = "No se pudo cargar toda la información del mensaje.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al abrir el mensaje {MessageId}.", item.Message.Id);
+            detailError = "No se pudo cargar toda la información del mensaje.";
+        }
+    }
+
+    private async Task ToggleStar(MailboxEntry entry)
+    {
+        if (!busyEntryIds.Add(entry.Id))
+        {
+            return;
+        }
+
+        try
+        {
+            await OnToggleStar.InvokeAsync(entry);
+        }
+        finally
+        {
+            busyEntryIds.Remove(entry.Id);
+        }
+    }
+
+    private async Task MoveToTrash(Guid entryId)
+    {
+        if (!busyEntryIds.Add(entryId))
+        {
+            return;
+        }
+
+        try
+        {
+            await OnMoveToTrash.InvokeAsync(entryId);
+        }
+        finally
+        {
+            busyEntryIds.Remove(entryId);
+        }
+    }
+
+    private void Reply()
+    {
+        if (selectedMessage is not { } selected)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(senderEmail))
+        {
+            detailError = "No se pudo obtener el correo del remitente para responder.";
+            return;
+        }
+
+        var subject = selected.Message.Subject.StartsWith("Re: ", StringComparison.OrdinalIgnoreCase)
+            ? selected.Message.Subject
+            : $"Re: {selected.Message.Subject}";
+
+        NavigateToCompose(new Dictionary<string, object?>
+        {
+            ["destinatario"] = senderEmail,
+            ["asunto"] = subject,
+            ["parentMessageId"] = selected.Message.Id
+        });
+    }
+
+    private void Forward()
+    {
+        if (selectedMessage is not { } selected)
+        {
+            return;
+        }
+
+        var subject = selected.Message.Subject.StartsWith("Fwd: ", StringComparison.OrdinalIgnoreCase)
+            ? selected.Message.Subject
+            : $"Fwd: {selected.Message.Subject}";
+
+        NavigateToCompose(new Dictionary<string, object?>
+        {
+            ["asunto"] = subject,
+            ["cuerpo"] = $"---- Mensaje reenviado ----\n{selected.Message.Body}"
+        });
+    }
+
+    private void NavigateToCompose(IReadOnlyDictionary<string, object?> queryParameters) =>
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("/redactar", queryParameters));
+
+    private string SenderName(Guid senderId) =>
+        senderNames.TryGetValue(senderId, out var name) ? name : senderId.ToString();
+
+    private static string Preview(string body)
+    {
+        const int maxLength = 120;
+        return body.Length <= maxLength ? body : $"{body[..maxLength]}…";
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..1].ToUpperInvariant(),
+            _ => string.Concat(parts[0][..1], parts[^1][..1]).ToUpperInvariant()
+        };
+    }
+}

@@ -7,47 +7,21 @@
 
 <PageTitle>Papelera</PageTitle>
 
-<h1>Papelera</h1>
-
-@if (isLoading)
-{
-    <p>Cargando mensajes...</p>
-}
-else
-{
-    @if (!string.IsNullOrWhiteSpace(errorMessage))
-    {
-        <p class="alert alert-danger" role="alert">@errorMessage</p>
-    }
-
-    @if (mensajes.Count == 0)
-    {
-        <p>No hay mensajes en la papelera.</p>
-    }
-    else
-    {
-        <ul class="list-group">
-            @foreach (var mensaje in mensajes)
-            {
-                var noLeido = !mensaje.Entry.IsRead;
-                <li class="list-group-item p-0">
-                    <button type="button"
-                            class="btn btn-link text-start text-decoration-none text-reset w-100 @(noLeido ? "fw-bold" : string.Empty)"
-                            @onclick="() => AbrirMensaje(mensaje.Message.Id)">
-                        <span class="d-block">Remitente: @mensaje.Message.SenderId</span>
-                        <span class="d-block">@mensaje.Message.Subject</span>
-                        <span class="d-block fw-normal">@VistaPrevia(mensaje.Message.Body)</span>
-                    </button>
-                </li>
-            }
-        </ul>
-    }
-}
+<MailboxFolderView Title="Papelera"
+                   EmptyText="No hay mensajes en la papelera."
+                   SearchInputId="buscar-papelera"
+                   Messages="@mensajes"
+                   IsLoading="@isLoading"
+                   ErrorMessage="@errorMessage"
+                   SearchTerm="@terminoBusqueda"
+                   SearchTermChanged="@BuscarMensajes" />
 
 @code {
     private List<(MailboxEntry Entry, Message Message)> mensajes = [];
     private bool isLoading = true;
+    private string terminoBusqueda = string.Empty;
     private string? errorMessage;
+    private int searchRequestId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -76,16 +50,58 @@ else
         }
     }
 
-    private void AbrirMensaje(Guid id)
+    private async Task BuscarMensajes(string termino)
     {
-        Navigation.NavigateTo($"/mensaje/{id}");
-    }
+        terminoBusqueda = termino;
+        var requestId = ++searchRequestId;
+        errorMessage = null;
 
-    private static string VistaPrevia(string cuerpo)
-    {
-        const int longitudMaxima = 120;
-        return cuerpo.Length <= longitudMaxima
-            ? cuerpo
-            : $"{cuerpo[..longitudMaxima]}…";
+        try
+        {
+            List<(MailboxEntry Entry, Message Message)> resultados;
+            if (string.IsNullOrWhiteSpace(termino))
+            {
+                resultados = await SupabaseService.ObtenerPapeleraAsync();
+            }
+            else
+            {
+                await SupabaseService.Initialization;
+                if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+                {
+                    throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
+                }
+
+                resultados = await SupabaseService.BuscarMensajes(userId, termino, "trash");
+            }
+
+            if (requestId == searchRequestId)
+            {
+                mensajes = resultados;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogWarning(exception, "No hay una sesión válida para buscar en la papelera.");
+                Navigation.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "No se pudieron buscar mensajes de la papelera desde Supabase.");
+                errorMessage = "No se pudieron buscar los mensajes de la papelera. Inténtalo de nuevo.";
+            }
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "Supabase devolvió un error al buscar en la papelera.");
+                errorMessage = "Ocurrió un error al buscar en la papelera.";
+            }
+        }
     }
 }

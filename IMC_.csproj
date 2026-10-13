@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <Content Include=".github\instructions\blazor.instructions.md" />
+    <Content Include=".github\instructions\design.instructions.md" />
   </ItemGroup>
 
 </Project>

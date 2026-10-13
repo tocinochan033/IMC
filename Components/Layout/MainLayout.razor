@@ -1,19 +1,27 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <aside class="sidebar" aria-label="Navegación principal">
-        <NavMenu />
-    </aside>
+<div class="mail-app">
+    <header class="app-header">
+        <a class="app-brand" href="/bandeja" aria-label="Micelio, bandeja de entrada">
+            <span class="brand-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none">
+                    <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" />
+                    <path d="m4.5 7 7.5 5.5L19.5 7" />
+                </svg>
+            </span>
+            <span>Micelio</span>
+        </a>
+    </header>
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+    <div class="app-workspace">
+        <aside class="sidebar" aria-label="Navegación principal">
+            <NavMenu />
+        </aside>
 
-        <article class="content px-4">
+        <main class="main-content">
             @Body
-        </article>
-    </main>
+        </main>
+    </div>
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>

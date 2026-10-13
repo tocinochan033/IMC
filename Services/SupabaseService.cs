@@ -96,7 +96,7 @@ public class SupabaseService
             throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
         }
 
-        if (folder is not ("inbox" or "sent" or "starred"))
+        if (folder is not ("inbox" or "sent" or "trash" or "starred"))
         {
             throw new ArgumentException("La carpeta de búsqueda no es válida.", nameof(folder));
         }
@@ -266,6 +266,48 @@ public class SupabaseService
             .Get();
 
         return response.Models.FirstOrDefault()?.Email;
+    }
+
+    public async Task<Profile?> ObtenerPerfilPorIdAsync(Guid profileId)
+    {
+        await Initialization;
+
+        if (Client.Auth.CurrentSession?.User is null)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para consultar el perfil.");
+        }
+
+        var response = await Client
+            .From<Profile>()
+            .Filter("id", Operator.Equals, profileId.ToString())
+            .Get();
+
+        return response.Models.FirstOrDefault();
+    }
+
+    public async Task<Dictionary<Guid, string>> ObtenerNombresRemitentesAsync(IEnumerable<Guid> senderIds)
+    {
+        await Initialization;
+
+        if (Client.Auth.CurrentSession?.User is null)
+        {
+            throw new InvalidOperationException("Se requiere una sesión autenticada para consultar los remitentes.");
+        }
+
+        var ids = senderIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var response = await Client
+            .From<Profile>()
+            .Where(profile => ids.Contains(profile.Id))
+            .Get();
+
+        return response.Models.ToDictionary(
+            profile => profile.Id,
+            profile => string.IsNullOrWhiteSpace(profile.FullName) ? profile.Email : profile.FullName);
     }
 
     public async Task<MailboxEntry?> ObtenerEntradaInboxPorMensajeAsync(string messageId)

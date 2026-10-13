@@ -1,0 +1,175 @@
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background: #F3F5F7;
+    color: #26323C;
+    font-family: Inter, system-ui, "Segoe UI", sans-serif;
+}
+
+.login-header {
+    height: 72px;
+    display: flex;
+    align-items: center;
+    padding: 0 34px;
+    background: #FFFFFF;
+    border-bottom: 1px solid #D5DBE0;
+}
+
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    color: #26323C;
+    text-decoration: none;
+}
+
+.brand-mark {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 4px;
+    background: #2C5F8A;
+}
+
+.brand-mark svg {
+    width: 21px;
+    stroke: #FFFFFF;
+    stroke-width: 1.4;
+}
+
+.brand-name {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.login-main {
+    flex: 1;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 48px 20px;
+}
+
+.login-card {
+    width: min(100%, 520px);
+    overflow: hidden;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+}
+
+.login-card-header {
+    padding: 21px 24px 18px;
+    border-bottom: 1px solid #D5DBE0;
+}
+
+.login-card-header h1 {
+    margin: 0;
+    color: #26323C;
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.login-form {
+    display: grid;
+    gap: 22px;
+    padding: 24px;
+}
+
+.form-field {
+    display: grid;
+    gap: 7px;
+}
+
+.form-field label {
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.input-with-icon {
+    position: relative;
+}
+
+.input-with-icon svg {
+    position: absolute;
+    top: 50%;
+    left: 12px;
+    width: 18px;
+    height: 18px;
+    transform: translateY(-50%);
+    pointer-events: none;
+    stroke: #68737D;
+    stroke-width: 1.5;
+}
+
+.input-with-icon .form-control {
+    min-height: 46px;
+    padding: 10px 12px 10px 40px;
+    border-color: #D5DBE0;
+    border-radius: 5px;
+    color: #26323C;
+    font-size: 0.875rem;
+}
+
+.input-with-icon .form-control::placeholder {
+    color: #8A949D;
+}
+
+.input-with-icon .form-control:focus {
+    border-color: #2C5F8A;
+    box-shadow: 0 0 0 0.2rem rgb(44 95 138 / 15%);
+}
+
+.login-error {
+    margin: -6px 0 0;
+    color: #A33A3A;
+    font-size: 0.875rem;
+}
+
+.login-submit {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: 1px solid #2C5F8A;
+    border-radius: 5px;
+    background: #2C5F8A;
+    color: #FFFFFF;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.login-submit:hover:not(:disabled) {
+    border-color: #26323C;
+    background: #26323C;
+}
+
+.login-submit:focus-visible {
+    outline: 3px solid rgb(44 95 138 / 25%);
+    outline-offset: 2px;
+}
+
+.login-submit:disabled {
+    cursor: wait;
+    opacity: 0.75;
+}
+
+@media (max-width: 575px) {
+    .login-header {
+        height: 64px;
+        padding: 0 20px;
+    }
+
+    .login-main {
+        padding: 32px 16px;
+    }
+
+    .login-card-header,
+    .login-form {
+        padding-right: 20px;
+        padding-left: 20px;
+    }
+}
