@@ -103,6 +103,31 @@
     stroke: #2C5F8A;
 }
 
+.label-navigation {
+    display: grid;
+    gap: 4px;
+}
+
+.label-navigation h2 {
+    margin: 8px 16px 4px;
+    color: #68737D;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.empty-labels {
+    padding: 4px 16px;
+    color: #8A949D;
+    font-size: 0.75rem;
+}
+
+.label-navigation .nav ::deep .nav-link span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .sign-out-area {
     display: grid;
     gap: 4px;

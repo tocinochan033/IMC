@@ -6,15 +6,26 @@
 <section class="folder-page" aria-labelledby="folder-title">
     <header class="folder-header">
         <h1 id="folder-title">@Title</h1>
-        <label class="folder-search" for="@SearchInputId">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <circle cx="11" cy="11" r="7" />
-                <path d="m16 16 4 4" />
-            </svg>
-            <span class="visually-hidden">Buscar por asunto o remitente</span>
-            <input id="@SearchInputId" type="search" placeholder="Buscar correo, remitente o asunto"
-                   value="@SearchTerm" @oninput="HandleSearch" />
-        </label>
+        <div class="folder-header-actions">
+            @if (ShowDeletePermanently)
+            {
+                <button type="button"
+                        class="empty-trash-button"
+                        disabled="@IsBusy"
+                        @onclick="RequestEmptyTrash">
+                    Vaciar papelera
+                </button>
+            }
+            <label class="folder-search" for="@SearchInputId">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="m16 16 4 4" />
+                </svg>
+                <span class="visually-hidden">Buscar por asunto o remitente</span>
+                <input id="@SearchInputId" type="search" placeholder="Buscar correo, remitente o asunto"
+                       value="@SearchTerm" @oninput="HandleSearch" />
+            </label>
+        </div>
     </header>
 
     @if (IsLoading)
@@ -44,7 +55,7 @@
                             <li class="folder-message-row @(isUnread ? "unread" : string.Empty) @(isSelected ? "selected" : string.Empty)">
                                 <button type="button" class="folder-message-open"
                                         aria-current="@(isSelected ? "true" : null)"
-                                        @onclick="() => SelectMessage(item)">
+                                        @onclick="() => OpenMessage(item)">
                                     <span class="folder-message-sender">@SenderName(item.Message.SenderId)</span>
                                     <span class="folder-message-subject">@item.Message.Subject</span>
                                     <span class="folder-message-preview">@Preview(item.Message.Body)</span>
@@ -72,6 +83,19 @@
                                             @onclick="() => MoveToTrash(item.Entry.Id)">
                                         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                                             <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                                        </svg>
+                                    </button>
+                                }
+                                @if (ShowDeletePermanently)
+                                {
+                                    <button type="button" class="folder-action folder-delete-permanently"
+                                            aria-label="Eliminar permanentemente"
+                                            title="Eliminar permanentemente"
+                                            disabled="@busyEntryIds.Contains(item.Entry.Id)"
+                                            @onclick="() => RequestPermanentDelete(item.Entry.Id)">
+                                        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                            <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                                            <path d="m9 10 6 6m0-6-6 6" />
                                         </svg>
                                     </button>
                                 }
@@ -125,8 +149,40 @@
                         <span>Selecciona un mensaje para leerlo</span>
                     </div>
                 }
+
             </section>
         </div>
+
+        @if (pendingPermanentDeleteId is not null || pendingEmptyTrash)
+        {
+            <div class="folder-confirmation-backdrop">
+                <section class="folder-confirmation-dialog"
+                         role="alertdialog"
+                         aria-modal="true"
+                         aria-labelledby="permanent-delete-title"
+                         aria-describedby="permanent-delete-description">
+                    <h2 id="permanent-delete-title">
+                        @(pendingEmptyTrash ? "Vaciar papelera" : "Eliminar permanentemente")
+                    </h2>
+                    <p id="permanent-delete-description">
+                        @(pendingEmptyTrash
+                            ? "Esta acción no se puede deshacer. ¿Quieres eliminar permanentemente todos los mensajes de tu papelera?"
+                            : "Esta acción no se puede deshacer. ¿Quieres eliminar este mensaje solo de tu papelera?")
+                    </p>
+                    <div class="folder-confirmation-actions">
+                        <button type="button" class="folder-detail-button"
+                                @onclick="CancelDelete">
+                            Cancelar
+                        </button>
+                        <button type="button" class="folder-detail-button permanent-delete-confirm"
+                                disabled="@IsBusy"
+                                @onclick="ConfirmDelete">
+                            @(pendingEmptyTrash ? "Vaciar papelera" : "Eliminar permanentemente")
+                        </button>
+                    </div>
+                </section>
+            </div>
+        }
     }
 </section>
 
@@ -159,6 +215,12 @@
     public bool ShowDelete { get; set; }
 
     [Parameter]
+    public bool ShowDeletePermanently { get; set; }
+
+    [Parameter]
+    public bool OpenDraftsInCompose { get; set; }
+
+    [Parameter]
     public EventCallback<string> SearchTermChanged { get; set; }
 
     [Parameter]
@@ -167,7 +229,17 @@
     [Parameter]
     public EventCallback<Guid> OnMoveToTrash { get; set; }
 
+    [Parameter]
+    public EventCallback<Guid> OnDeletePermanently { get; set; }
+
+    [Parameter]
+    public EventCallback OnEmptyTrash { get; set; }
+
     private readonly HashSet<Guid> busyEntryIds = [];
+    private Guid? pendingPermanentDeleteId;
+    private bool pendingEmptyTrash;
+    private bool isEmptyingTrash;
+    private bool IsBusy => isEmptyingTrash || busyEntryIds.Count > 0;
     private Dictionary<Guid, string> senderNames = [];
     private (MailboxEntry Entry, Message Message)? selectedMessage;
     private string senderName = "Remitente";
@@ -216,6 +288,20 @@
 
     private Task HandleSearch(ChangeEventArgs args) =>
         SearchTermChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+
+    private async Task OpenMessage((MailboxEntry Entry, Message Message) item)
+    {
+        if (OpenDraftsInCompose)
+        {
+            NavigateToCompose(new Dictionary<string, object?>
+            {
+                ["draftId"] = item.Message.Id
+            });
+            return;
+        }
+
+        await SelectMessage(item);
+    }
 
     private async Task SelectMessage((MailboxEntry Entry, Message Message) item)
     {
@@ -290,6 +376,63 @@
         try
         {
             await OnMoveToTrash.InvokeAsync(entryId);
+        }
+        finally
+        {
+            busyEntryIds.Remove(entryId);
+        }
+    }
+
+    private void RequestPermanentDelete(Guid entryId)
+    {
+        pendingEmptyTrash = false;
+        pendingPermanentDeleteId = entryId;
+    }
+
+    private void RequestEmptyTrash()
+    {
+        if (Messages.Count == 0 || IsBusy)
+        {
+            return;
+        }
+
+        pendingPermanentDeleteId = null;
+        pendingEmptyTrash = true;
+    }
+
+    private void CancelDelete()
+    {
+        pendingPermanentDeleteId = null;
+        pendingEmptyTrash = false;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (pendingEmptyTrash)
+        {
+            pendingEmptyTrash = false;
+            isEmptyingTrash = true;
+            try
+            {
+                await OnEmptyTrash.InvokeAsync();
+            }
+            finally
+            {
+                isEmptyingTrash = false;
+            }
+
+            return;
+        }
+
+        if (pendingPermanentDeleteId is not { } entryId || !busyEntryIds.Add(entryId))
+        {
+            return;
+        }
+
+        pendingPermanentDeleteId = null;
+        try
+        {
+            await OnDeletePermanently.InvokeAsync(entryId);
         }
         finally
         {

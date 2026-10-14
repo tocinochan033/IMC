@@ -14,7 +14,10 @@
                    IsLoading="@isLoading"
                    ErrorMessage="@errorMessage"
                    SearchTerm="@terminoBusqueda"
-                   SearchTermChanged="@BuscarMensajes" />
+                   SearchTermChanged="@BuscarMensajes"
+                   ShowDeletePermanently="true"
+                   OnDeletePermanently="@EliminarPermanentemente"
+                   OnEmptyTrash="@VaciarPapelera" />
 
 @code {
     private List<(MailboxEntry Entry, Message Message)> mensajes = [];
@@ -22,6 +25,7 @@
     private string terminoBusqueda = string.Empty;
     private string? errorMessage;
     private int searchRequestId;
+    private readonly HashSet<Guid> deletingEntryIds = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,6 +106,81 @@
                 Logger.LogError(exception, "Supabase devolvió un error al buscar en la papelera.");
                 errorMessage = "Ocurrió un error al buscar en la papelera.";
             }
+        }
+    }
+
+    private async Task EliminarPermanentemente(Guid mailboxEntryId)
+    {
+        if (!deletingEntryIds.Add(mailboxEntryId))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        try
+        {
+            var eliminado = await SupabaseService.EliminarPermanentementeDePapelera(mailboxEntryId);
+            if (eliminado)
+            {
+                mensajes.RemoveAll(mensaje => mensaje.Entry.Id == mailboxEntryId);
+            }
+            else
+            {
+                Logger.LogWarning(
+                    "No se eliminó la entrada {MailboxEntryId}: no existe en la papelera del usuario actual.",
+                    mailboxEntryId);
+                errorMessage = "El mensaje ya no está en tu papelera o no se pudo encontrar.";
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para eliminar la entrada {MailboxEntryId}.", mailboxEntryId);
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo eliminar permanentemente la entrada {MailboxEntryId}.", mailboxEntryId);
+            errorMessage = "No se pudo eliminar el mensaje permanentemente. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó eliminar la entrada {MailboxEntryId}.", mailboxEntryId);
+            errorMessage = "No se pudo eliminar el mensaje permanentemente. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            deletingEntryIds.Remove(mailboxEntryId);
+        }
+    }
+
+    private async Task VaciarPapelera()
+    {
+        if (deletingEntryIds.Count > 0)
+        {
+            return;
+        }
+
+        errorMessage = null;
+        try
+        {
+            var eliminadas = await SupabaseService.VaciarPapelera();
+            mensajes.Clear();
+            Logger.LogInformation("Se eliminaron {MailboxEntryCount} entradas de la papelera del usuario.", eliminadas);
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para vaciar la papelera.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo vaciar la papelera desde Supabase.");
+            errorMessage = "No se pudo vaciar la papelera. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó vaciar la papelera.");
+            errorMessage = "No se pudo vaciar la papelera. Inténtalo de nuevo.";
         }
     }
 }

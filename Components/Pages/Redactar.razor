@@ -18,6 +18,12 @@
         </div>
     </header>
 
+    @if (isLoadingDraft)
+    {
+        <p class="compose-status">Cargando borrador...</p>
+    }
+    else
+    {
     <form class="compose-form" @onsubmit="Enviar" @onsubmit:preventDefault>
         <div class="compose-field">
             <label for="destinatario">Para</label>
@@ -41,7 +47,7 @@
         }
 
         <footer class="compose-footer">
-            <button type="submit" class="compose-send" disabled="@isSending">
+            <button type="submit" class="compose-send" disabled="@(isSending || isSavingDraft)">
                 @if (isSending)
                 {
                     <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
@@ -56,8 +62,24 @@
                     <span>Enviar</span>
                 }
             </button>
+            <button type="button" class="compose-save" @onclick="Guardar" disabled="@(isSending || isSavingDraft)">
+                @if (isSavingDraft)
+                {
+                    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    <span>Guardando...</span>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+                        <path d="M17 21v-8H7v8M7 3v5h8" />
+                    </svg>
+                    <span>Guardar borrador</span>
+                }
+            </button>
         </footer>
     </form>
+    }
 </section>
 
 @code {
@@ -73,17 +95,63 @@
     [SupplyParameterFromQuery(Name = "parentMessageId")]
     public Guid? ParentMessageId { get; set; }
 
+    [SupplyParameterFromQuery(Name = "draftId")]
+    public Guid? DraftId { get; set; }
+
     private string Destinatario { get; set; } = string.Empty;
     private string Asunto { get; set; } = string.Empty;
     private string Cuerpo { get; set; } = string.Empty;
     private bool isSending;
+    private bool isSavingDraft;
+    private bool isLoadingDraft;
     private string? errorMessage;
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        Destinatario = DestinatarioInicial ?? string.Empty;
-        Asunto = AsuntoInicial ?? string.Empty;
-        Cuerpo = CuerpoInicial ?? string.Empty;
+        if (DraftId is not { } draftId)
+        {
+            Destinatario = DestinatarioInicial ?? string.Empty;
+            Asunto = AsuntoInicial ?? string.Empty;
+            Cuerpo = CuerpoInicial ?? string.Empty;
+            errorMessage = null;
+            return;
+        }
+
+        isLoadingDraft = true;
+        errorMessage = null;
+        try
+        {
+            var draft = await SupabaseService.ObtenerBorradorAsync(draftId);
+            if (draft is null)
+            {
+                errorMessage = "No se encontró el borrador o ya no está disponible.";
+                return;
+            }
+
+            Destinatario = draft.Value.Message.DraftRecipientEmail ?? string.Empty;
+            Asunto = draft.Value.Message.Subject;
+            Cuerpo = draft.Value.Message.Body;
+            ParentMessageId = draft.Value.Message.ParentMessageId;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para abrir el borrador {DraftId}.", draftId);
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo cargar el borrador {DraftId}.", draftId);
+            errorMessage = "No se pudo cargar el borrador. Inténtalo de nuevo.";
+        }
+        catch (PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar el borrador {DraftId}.", draftId);
+            errorMessage = "Ocurrió un error al cargar el borrador.";
+        }
+        finally
+        {
+            isLoadingDraft = false;
+        }
     }
 
     private async Task Enviar()
@@ -98,6 +166,7 @@
 
         try
         {
+            await SupabaseService.Initialization;
             if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var senderId))
             {
                 Navigation.NavigateTo("/login");
@@ -109,7 +178,8 @@
                 Destinatario,
                 Asunto,
                 Cuerpo,
-                ParentMessageId);
+                ParentMessageId,
+                DraftId);
             if (result == ResultadoEnvioCorreo.DestinatarioNoValido)
             {
                 errorMessage = "No existe un usuario con ese correo destinatario.";
@@ -142,6 +212,61 @@
         finally
         {
             isSending = false;
+        }
+    }
+
+    private async Task Guardar()
+    {
+        if (isSavingDraft || isSending)
+        {
+            return;
+        }
+
+        isSavingDraft = true;
+        errorMessage = null;
+
+        try
+        {
+            await SupabaseService.Initialization;
+            if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var senderId))
+            {
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            DraftId = await SupabaseService.GuardarBorrador(
+                senderId,
+                Destinatario,
+                Asunto,
+                Cuerpo,
+                DraftId,
+                ParentMessageId);
+            Navigation.NavigateTo("/borradores");
+        }
+        catch (GotrueException exception)
+        {
+            Logger.LogError(exception, "Supabase Auth rechazó guardar el borrador.");
+            errorMessage = "Tu sesión no es válida. Inicia sesión de nuevo.";
+        }
+        catch (PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al guardar el borrador.");
+            errorMessage = "No se pudo guardar el borrador. Inténtalo de nuevo.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo conectar con Supabase para guardar el borrador.");
+            errorMessage = "No se pudo conectar con el servicio. Inténtalo de nuevo.";
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No se pudo guardar el borrador por falta de sesión válida.");
+            errorMessage = "Tu sesión no es válida. Inicia sesión de nuevo.";
+            Navigation.NavigateTo("/login");
+        }
+        finally
+        {
+            isSavingDraft = false;
         }
     }
 }

@@ -5,11 +5,11 @@
 @inject NavigationManager Navigation
 @inject ILogger<Bandeja> Logger
 
-<PageTitle>Bandeja de entrada</PageTitle>
+<PageTitle>@(string.IsNullOrWhiteSpace(EtiquetaSeleccionada) ? "Bandeja de entrada" : EtiquetaSeleccionada)</PageTitle>
 
 <section class="inbox-page" aria-labelledby="inbox-title">
     <header class="inbox-header">
-        <h1 id="inbox-title">Bandeja de entrada</h1>
+        <h1 id="inbox-title">@(string.IsNullOrWhiteSpace(EtiquetaSeleccionada) ? "Bandeja de entrada" : $"Etiqueta: {EtiquetaSeleccionada}")</h1>
         <label class="inbox-search" for="buscar-bandeja">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="11" cy="11" r="7" />
@@ -32,7 +32,7 @@ else
         <p class="inbox-error" role="alert">@errorMessage</p>
     }
 
-    <div class="inbox-split @(mensajeSeleccionado is not null ? "has-selection" : string.Empty)">
+       <div class="inbox-split @(mensajeSeleccionado is not null ? "has-selection" : string.Empty)">
         <section class="message-list-pane" aria-label="Lista de mensajes">
             @if (mensajes.Count == 0)
             {
@@ -54,28 +54,80 @@ else
                                 <span class="message-subject">@mensaje.Message.Subject</span>
                                 <span class="message-preview">@VistaPrevia(mensaje.Message.Body)</span>
                             </button>
-                            <button type="button"
-                                    class="message-action star-action @(mensaje.Entry.IsStarred ? "is-starred" : string.Empty)"
-                                    aria-label="@(mensaje.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
-                                    title="@(mensaje.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
-                                    disabled="@togglingStarEntryIds.Contains(mensaje.Entry.Id)"
-                                    @onclick="() => ToggleDestacado(mensaje.Entry)">
-                                <svg viewBox="0 0 24 24" fill="@(mensaje.Entry.IsStarred ? "currentColor" : "none")"
-                                     stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
-                                     stroke-linejoin="round" aria-hidden="true">
-                                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                                </svg>
-                            </button>
-                            <button type="button"
-                                    class="message-action delete-action"
-                                    aria-label="Mover a papelera"
-                                    title="Mover a papelera"
-                                    disabled="@movingEntryIds.Contains(mensaje.Entry.Id)"
-                                    @onclick="() => MoverAPapelera(mensaje.Entry.Id)">
-                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                                    <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
-                                </svg>
-                            </button>
+                            @if (mensajeSeleccionado is null)
+                            {
+                                <button type="button"
+                                        class="message-action star-action @(mensaje.Entry.IsStarred ? "is-starred" : string.Empty)"
+                                        aria-label="@(mensaje.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                                        title="@(mensaje.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                                        disabled="@togglingStarEntryIds.Contains(mensaje.Entry.Id)"
+                                        @onclick="() => ToggleDestacado(mensaje.Entry)">
+                                    <svg viewBox="0 0 24 24" fill="@(mensaje.Entry.IsStarred ? "currentColor" : "none")"
+                                         stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                                         stroke-linejoin="round" aria-hidden="true">
+                                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                                    </svg>
+                                </button>
+                                <details class="label-menu">
+                                    <summary class="message-action label-action"
+                                             aria-label="Asignar etiqueta al mensaje"
+                                             title="@(mensaje.Entry.Label is null ? "Asignar etiqueta" : $"Etiqueta: {mensaje.Entry.Label}")">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                             aria-hidden="true">
+                                            <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" />
+                                            <circle cx="7.5" cy="7.5" r="1" />
+                                        </svg>
+                                    </summary>
+                                    <div class="label-menu-panel">
+                                        <label>
+                                            <span>Etiqueta</span>
+                                            <select value="@EtiquetaElegidaEnMenu(mensaje.Entry)"
+                                                    @onchange="args => CambiarEtiquetaSeleccionada(mensaje.Entry.Id, args)"
+                                                    aria-label="Seleccionar etiqueta existente">
+                                                <option value="">Sin etiqueta</option>
+                                                @foreach (var etiqueta in etiquetas)
+                                                {
+                                                    <option value="@etiqueta">@etiqueta</option>
+                                                }
+                                            </select>
+                                        </label>
+                                        <button type="button"
+                                                class="label-apply-button"
+                                                disabled="@assigningLabelEntryIds.Contains(mensaje.Entry.Id)"
+                                                @onclick="() => AplicarEtiqueta(mensaje.Entry)">
+                                            Aplicar
+                                        </button>
+                                        <label>
+                                            <span>Nueva etiqueta</span>
+                                            <input type="text"
+                                                   maxlength="80"
+                                                   placeholder="Escribe una etiqueta"
+                                                   value="@EtiquetaNueva(mensaje.Entry.Id)"
+                                                   @oninput="args => CambiarEtiquetaNueva(mensaje.Entry.Id, args)"
+                                                   aria-label="Escribir nueva etiqueta" />
+                                        </label>
+                                        <button type="button"
+                                                class="label-apply-button"
+                                                disabled="@assigningLabelEntryIds.Contains(mensaje.Entry.Id)"
+                                                @onclick="() => AplicarEtiquetaNueva(mensaje.Entry)">
+                                            Crear y asignar
+                                        </button>
+                                    </div>
+                                </details>
+                                <button type="button"
+                                        class="message-action delete-action"
+                                        aria-label="Mover a papelera"
+                                        title="Mover a papelera"
+                                        disabled="@movingEntryIds.Contains(mensaje.Entry.Id)"
+                                        @onclick="() => SolicitarConfirmacionPapelera(mensaje.Entry.Id)">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                         aria-hidden="true">
+                                        <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                                    </svg>
+                                </button>
+                            }
                         </li>
                     }
                 </ul>
@@ -92,6 +144,79 @@ else
             else
             {
                 var seleccionado = mensajeSeleccionado.Value;
+                <div class="detail-toolbar" aria-label="Acciones del mensaje">
+                    <button type="button"
+                            class="detail-toolbar-button star-action @(seleccionado.Entry.IsStarred ? "is-starred" : string.Empty)"
+                            aria-label="@(seleccionado.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                            title="@(seleccionado.Entry.IsStarred ? "Quitar de destacados" : "Marcar como destacado")"
+                            disabled="@togglingStarEntryIds.Contains(seleccionado.Entry.Id)"
+                            @onclick="() => ToggleDestacado(seleccionado.Entry)">
+                        <svg viewBox="0 0 24 24" fill="@(seleccionado.Entry.IsStarred ? "currentColor" : "none")"
+                             stroke="currentColor" stroke-width="1.6" stroke-linecap="round"
+                             stroke-linejoin="round" aria-hidden="true">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                    </button>
+                    <details class="label-menu detail-label-menu">
+                        <summary class="detail-toolbar-button label-action"
+                                 aria-label="Asignar etiqueta al mensaje"
+                                 title="@(seleccionado.Entry.Label is null ? "Asignar etiqueta" : $"Etiqueta: {seleccionado.Entry.Label}")">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                                 aria-hidden="true">
+                                <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" />
+                                <circle cx="7.5" cy="7.5" r="1" />
+                            </svg>
+                        </summary>
+                        <div class="label-menu-panel">
+                            <label>
+                                <span>Etiqueta</span>
+                                <select value="@EtiquetaElegidaEnMenu(seleccionado.Entry)"
+                                        @onchange="args => CambiarEtiquetaSeleccionada(seleccionado.Entry.Id, args)"
+                                        aria-label="Seleccionar etiqueta existente">
+                                    <option value="">Sin etiqueta</option>
+                                    @foreach (var etiqueta in etiquetas)
+                                    {
+                                        <option value="@etiqueta">@etiqueta</option>
+                                    }
+                                </select>
+                            </label>
+                            <button type="button"
+                                    class="label-apply-button"
+                                    disabled="@assigningLabelEntryIds.Contains(seleccionado.Entry.Id)"
+                                    @onclick="() => AplicarEtiqueta(seleccionado.Entry)">
+                                Aplicar
+                            </button>
+                            <label>
+                                <span>Nueva etiqueta</span>
+                                <input type="text"
+                                       maxlength="80"
+                                       placeholder="Escribe una etiqueta"
+                                       value="@EtiquetaNueva(seleccionado.Entry.Id)"
+                                       @oninput="args => CambiarEtiquetaNueva(seleccionado.Entry.Id, args)"
+                                       aria-label="Escribir nueva etiqueta" />
+                            </label>
+                            <button type="button"
+                                    class="label-apply-button"
+                                    disabled="@assigningLabelEntryIds.Contains(seleccionado.Entry.Id)"
+                                    @onclick="() => AplicarEtiquetaNueva(seleccionado.Entry)">
+                                Crear y asignar
+                            </button>
+                        </div>
+                    </details>
+                    <button type="button"
+                            class="detail-toolbar-button delete-action"
+                            aria-label="Mover a papelera"
+                            title="Mover a papelera"
+                            disabled="@movingEntryIds.Contains(seleccionado.Entry.Id)"
+                            @onclick="() => SolicitarConfirmacionPapelera(seleccionado.Entry.Id)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+                             aria-hidden="true">
+                            <path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" />
+                        </svg>
+                    </button>
+                </div>
                 <header class="detail-header">
                     <h2>@seleccionado.Message.Subject</h2>
                 </header>
@@ -131,49 +256,138 @@ else
             }
         </section>
     </div>
+
+    @if (entradaPendienteDeEliminar is { } mailboxEntryId)
+    {
+        <div class="confirmation-backdrop">
+            <section class="confirmation-dialog"
+                     role="alertdialog"
+                     aria-modal="true"
+                     aria-labelledby="delete-confirmation-title"
+                     aria-describedby="delete-confirmation-message">
+                <h2 id="delete-confirmation-title">Confirmar eliminación</h2>
+                <p id="delete-confirmation-message">¿Seguro que quieres eliminar este mensaje?</p>
+                <div class="confirmation-actions">
+                    <button type="button" class="detail-button" @onclick="CancelarEliminar">
+                        Cancelar
+                    </button>
+                    <button type="button"
+                            class="detail-button destructive-action"
+                            disabled="@movingEntryIds.Contains(mailboxEntryId)"
+                            @onclick="ConfirmarMoverAPapelera">
+                        Eliminar
+                    </button>
+                </div>
+            </section>
+        </div>
+    }
 }
 </section>
 
 @code {
     private List<(MailboxEntry Entry, Message Message)> mensajes = [];
+    private List<string> etiquetas = [];
     private HashSet<Guid> movingEntryIds = [];
     private HashSet<Guid> togglingStarEntryIds = [];
+    private HashSet<Guid> assigningLabelEntryIds = [];
+    private Dictionary<Guid, string> etiquetasSeleccionadasPorEntrada = [];
+    private Dictionary<Guid, string> etiquetasNuevasPorEntrada = [];
     private bool isLoading = true;
     private string terminoBusqueda = string.Empty;
     private string? errorMessage;
+    private Guid? entradaPendienteDeEliminar;
     private int searchRequestId;
+    private int loadRequestId;
     private int selectionRequestId;
+    private string? ultimaEtiquetaCargada;
+    private bool bandejaInicializada;
     private (MailboxEntry Entry, Message Message)? mensajeSeleccionado;
     private string remitenteNombre = "Remitente";
     private string remitenteEmail = string.Empty;
     private Dictionary<Guid, string> nombresRemitentes = [];
 
-    protected override async Task OnInitializedAsync()
+    [SupplyParameterFromQuery(Name = "etiqueta")]
+    public string? EtiquetaSeleccionada { get; set; }
+
+    protected override async Task OnParametersSetAsync()
     {
+        if (bandejaInicializada &&
+            string.Equals(ultimaEtiquetaCargada, EtiquetaSeleccionada, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        bandejaInicializada = true;
+        ultimaEtiquetaCargada = EtiquetaSeleccionada;
+        terminoBusqueda = string.Empty;
+        searchRequestId++;
+        etiquetasSeleccionadasPorEntrada.Clear();
+        etiquetasNuevasPorEntrada.Clear();
+        var requestId = ++loadRequestId;
+        isLoading = true;
+        errorMessage = null;
+
         try
         {
-            mensajes = await SupabaseService.ObtenerBandejaEntradaAsync();
-            nombresRemitentes = await SupabaseService.ObtenerNombresRemitentesAsync(
-                mensajes.Select(mensaje => mensaje.Message.SenderId));
+            await SupabaseService.Initialization;
+            if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+            {
+                throw new InvalidOperationException("Se requiere una sesión autenticada para consultar la bandeja.");
+            }
+
+            var resultados = string.IsNullOrWhiteSpace(EtiquetaSeleccionada)
+                ? await SupabaseService.ObtenerBandejaEntradaAsync()
+                : await SupabaseService.ObtenerMensajesConEtiquetaAsync(userId, EtiquetaSeleccionada);
+            var nombres = await SupabaseService.ObtenerNombresRemitentesAsync(
+                resultados.Select(mensaje => mensaje.Message.SenderId));
+
+            if (requestId == loadRequestId)
+            {
+                mensajes = resultados;
+                nombresRemitentes = nombres;
+                LimpiarSeleccionSiNoExiste(resultados);
+            }
         }
         catch (InvalidOperationException exception)
         {
-            Logger.LogWarning(exception, "No hay una sesión válida para consultar la bandeja.");
-            Navigation.NavigateTo("/login");
+            if (requestId == loadRequestId)
+            {
+                Logger.LogWarning(exception, "No hay una sesión válida para consultar la bandeja.");
+                Navigation.NavigateTo("/login");
+            }
         }
         catch (HttpRequestException exception)
         {
-            Logger.LogError(exception, "No se pudo cargar la bandeja desde Supabase.");
-            errorMessage = "No se pudo cargar la bandeja. Inténtalo de nuevo.";
+            if (requestId == loadRequestId)
+            {
+                Logger.LogError(exception, "No se pudo cargar la bandeja desde Supabase.");
+                errorMessage = "No se pudo cargar la bandeja. Inténtalo de nuevo.";
+            }
         }
         catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
         {
-            Logger.LogError(exception, "Supabase devolvió un error al consultar la bandeja.");
-            errorMessage = "Ocurrió un error al consultar tus mensajes.";
+            if (requestId == loadRequestId)
+            {
+                Logger.LogError(exception, "Supabase devolvió un error al consultar la bandeja.");
+                errorMessage = "Ocurrió un error al consultar tus mensajes.";
+            }
         }
         finally
         {
-            isLoading = false;
+            if (requestId == loadRequestId)
+            {
+                isLoading = false;
+            }
+        }
+    }
+
+    private void LimpiarSeleccionSiNoExiste(List<(MailboxEntry Entry, Message Message)> resultados)
+    {
+        if (mensajeSeleccionado is { } seleccionado &&
+            resultados.All(mensaje => mensaje.Entry.Id != seleccionado.Entry.Id))
+        {
+            selectionRequestId++;
+            mensajeSeleccionado = null;
         }
     }
 
@@ -236,7 +450,20 @@ else
             List<(MailboxEntry Entry, Message Message)> resultados;
             if (string.IsNullOrWhiteSpace(terminoBusqueda))
             {
-                resultados = await SupabaseService.ObtenerBandejaEntradaAsync();
+                if (string.IsNullOrWhiteSpace(EtiquetaSeleccionada))
+                {
+                    resultados = await SupabaseService.ObtenerBandejaEntradaAsync();
+                }
+                else
+                {
+                    await SupabaseService.Initialization;
+                    if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+                    {
+                        throw new InvalidOperationException("Se requiere una sesión autenticada para consultar la bandeja.");
+                    }
+
+                    resultados = await SupabaseService.ObtenerMensajesConEtiquetaAsync(userId, EtiquetaSeleccionada);
+                }
             }
             else
             {
@@ -246,7 +473,11 @@ else
                     throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
                 }
 
-                resultados = await SupabaseService.BuscarMensajes(userId, terminoBusqueda, "inbox");
+                resultados = await SupabaseService.BuscarMensajes(
+                    userId,
+                    terminoBusqueda,
+                    "inbox",
+                    EtiquetaSeleccionada);
             }
 
             var nombres = await SupabaseService.ObtenerNombresRemitentesAsync(
@@ -286,6 +517,134 @@ else
                 Logger.LogError(exception, "Supabase devolvió un error al buscar en la bandeja.");
                 errorMessage = "Ocurrió un error al buscar tus mensajes.";
             }
+        }
+    }
+
+    private string EtiquetaElegidaEnMenu(MailboxEntry entry) =>
+        etiquetasSeleccionadasPorEntrada.TryGetValue(entry.Id, out var etiqueta)
+            ? etiqueta
+            : entry.Label ?? string.Empty;
+
+    private void CambiarEtiquetaSeleccionada(Guid mailboxEntryId, ChangeEventArgs args)
+    {
+        etiquetasSeleccionadasPorEntrada[mailboxEntryId] = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private string EtiquetaNueva(Guid mailboxEntryId) =>
+        etiquetasNuevasPorEntrada.TryGetValue(mailboxEntryId, out var etiqueta) ? etiqueta : string.Empty;
+
+    private void CambiarEtiquetaNueva(Guid mailboxEntryId, ChangeEventArgs args)
+    {
+        etiquetasNuevasPorEntrada[mailboxEntryId] = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private Task AplicarEtiqueta(MailboxEntry entry) =>
+        AsignarEtiquetaAEntradaAsync(entry, EtiquetaElegidaEnMenu(entry));
+
+    private Task AplicarEtiquetaNueva(MailboxEntry entry)
+    {
+        var etiqueta = EtiquetaNueva(entry.Id).Trim();
+        if (string.IsNullOrWhiteSpace(etiqueta))
+        {
+            errorMessage = "Escribe un nombre para la nueva etiqueta.";
+            return Task.CompletedTask;
+        }
+
+        return CrearYAsignarEtiquetaAsync(entry, etiqueta);
+    }
+
+    private async Task CrearYAsignarEtiquetaAsync(MailboxEntry entry, string etiqueta)
+    {
+        var etiquetaNormalizada = etiqueta.Trim();
+        if (etiquetaNormalizada.Length > 80)
+        {
+            errorMessage = "La etiqueta no puede superar los 80 caracteres.";
+            return;
+        }
+
+        try
+        {
+            await SupabaseService.CrearEtiqueta(etiquetaNormalizada);
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para crear la etiqueta.");
+            Navigation.NavigateTo("/login");
+            return;
+        }
+        catch (ArgumentException exception)
+        {
+            Logger.LogWarning(exception, "Se intentó crear una etiqueta no válida.");
+            errorMessage = "La etiqueta debe contener entre 1 y 80 caracteres.";
+            return;
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo guardar la etiqueta {Label} en Supabase.", etiquetaNormalizada);
+            errorMessage = "No se pudo guardar la etiqueta. Inténtalo de nuevo.";
+            return;
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó guardar la etiqueta {Label}.", etiquetaNormalizada);
+            errorMessage = "No se pudo guardar la etiqueta. Inténtalo de nuevo.";
+            return;
+        }
+
+        await AsignarEtiquetaAEntradaAsync(entry, etiquetaNormalizada);
+    }
+
+    private async Task AsignarEtiquetaAEntradaAsync(MailboxEntry entry, string etiqueta)
+    {
+        if (!assigningLabelEntryIds.Add(entry.Id))
+        {
+            return;
+        }
+
+        errorMessage = null;
+        try
+        {
+            var etiquetaNormalizada = etiqueta.Trim();
+            await SupabaseService.AsignarEtiqueta(entry.Id, etiquetaNormalizada);
+            entry.Label = string.IsNullOrWhiteSpace(etiquetaNormalizada) ? null : etiquetaNormalizada;
+            etiquetasSeleccionadasPorEntrada.Remove(entry.Id);
+            etiquetasNuevasPorEntrada.Remove(entry.Id);
+
+            if (entry.Label is not null && !etiquetas.Contains(entry.Label, StringComparer.Ordinal))
+            {
+                etiquetas.Add(entry.Label);
+                etiquetas = etiquetas.OrderBy(label => label, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(EtiquetaSeleccionada) &&
+                !string.Equals(entry.Label, EtiquetaSeleccionada, StringComparison.Ordinal))
+            {
+                mensajes.RemoveAll(mensaje => mensaje.Entry.Id == entry.Id);
+                if (mensajeSeleccionado?.Entry.Id == entry.Id)
+                {
+                    selectionRequestId++;
+                    mensajeSeleccionado = null;
+                }
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión no es válida para asignar una etiqueta a la entrada {MailboxEntryId}.", entry.Id);
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo asignar una etiqueta a la entrada {MailboxEntryId}.", entry.Id);
+            errorMessage = "No se pudo actualizar la etiqueta. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó asignar una etiqueta a la entrada {MailboxEntryId}.", entry.Id);
+            errorMessage = "No se pudo actualizar la etiqueta. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            assigningLabelEntryIds.Remove(entry.Id);
         }
     }
 
@@ -361,6 +720,27 @@ else
         {
             movingEntryIds.Remove(mailboxEntryId);
         }
+    }
+
+    private void SolicitarConfirmacionPapelera(Guid mailboxEntryId)
+    {
+        entradaPendienteDeEliminar = mailboxEntryId;
+    }
+
+    private void CancelarEliminar()
+    {
+        entradaPendienteDeEliminar = null;
+    }
+
+    private async Task ConfirmarMoverAPapelera()
+    {
+        if (entradaPendienteDeEliminar is not { } mailboxEntryId)
+        {
+            return;
+        }
+
+        entradaPendienteDeEliminar = null;
+        await MoverAPapelera(mailboxEntryId);
     }
 
     private static string VistaPrevia(string cuerpo)

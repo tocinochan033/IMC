@@ -2,6 +2,7 @@
 @inject SupabaseService SupabaseService
 @inject ILogger<NavMenu> Logger
 @using Supabase.Gotrue.Exceptions
+@implements IDisposable
 
 <div class="mail-navigation">
     <input id="navigation-toggle" type="checkbox" class="navigation-toggle" aria-label="Mostrar navegación" />
@@ -41,6 +42,13 @@
                 </svg>
                 <span>Enviados</span>
             </NavLink>
+            <NavLink class="nav-link" href="/borradores">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M6 3h9l5 5v13H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+                    <path d="M14 3v6h6" />
+                </svg>
+                <span>Borradores</span>
+            </NavLink>
             <NavLink class="nav-link" href="/papelera">
                 <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                     <path d="M3 6h18" />
@@ -49,6 +57,29 @@
                 <span>Papelera</span>
             </NavLink>
         </nav>
+
+        <section class="label-navigation" aria-labelledby="label-navigation-title">
+            <h2 id="label-navigation-title">Etiquetas</h2>
+            @if (etiquetas.Count == 0)
+            {
+                <span class="empty-labels">Aún no hay etiquetas</span>
+            }
+            else
+            {
+                <nav class="nav flex-column" aria-label="Etiquetas">
+                    @foreach (var etiqueta in etiquetas)
+                    {
+                        <NavLink class="nav-link" href="@($"/bandeja?etiqueta={Uri.EscapeDataString(etiqueta)}")">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" />
+                                <circle cx="7.5" cy="7.5" r="1" />
+                            </svg>
+                            <span>@etiqueta</span>
+                        </NavLink>
+                    }
+                </nav>
+            }
+        </section>
 
         <div class="sign-out-area">
             @if (confirmSignOut)
@@ -75,6 +106,39 @@
     private bool confirmSignOut;
     private bool isSigningOut;
     private string? signOutError;
+    private List<string> etiquetas = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        SupabaseService.EtiquetasActualizadas += ActualizarEtiquetas;
+        await CargarEtiquetasAsync();
+    }
+
+    private async Task CargarEtiquetasAsync()
+    {
+        try
+        {
+            await SupabaseService.Initialization;
+            if (Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+            {
+                etiquetas = await SupabaseService.ObtenerEtiquetas(userId);
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para cargar las etiquetas.");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudieron cargar las etiquetas desde Supabase.");
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar las etiquetas.");
+        }
+    }
+
+    private void ActualizarEtiquetas() => _ = InvokeAsync(CargarEtiquetasAsync);
 
     private void RequestSignOut()
     {
@@ -115,5 +179,10 @@
         {
             isSigningOut = false;
         }
+    }
+
+    public void Dispose()
+    {
+        SupabaseService.EtiquetasActualizadas -= ActualizarEtiquetas;
     }
 }

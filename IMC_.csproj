@@ -12,6 +12,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Include=".github\agents\code-reviewer.agent.md" />
+    <Content Include=".github\agents\frontend-developer.agent.md" />
+    <Content Include=".github\agents\project-manager.agent.md" />
+    <Content Include=".github\agents\qa-tester.agent.md" />
     <Content Include=".github\instructions\blazor.instructions.md" />
     <Content Include=".github\instructions\design.instructions.md" />
   </ItemGroup>

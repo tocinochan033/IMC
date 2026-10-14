@@ -98,6 +98,7 @@
 }
 
 .message-row {
+    position: relative;
     min-height: 86px;
     display: flex;
     align-items: center;
@@ -190,6 +191,76 @@
     color: #68737D;
 }
 
+.label-menu {
+    position: relative;
+    flex: 0 0 34px;
+}
+
+.label-action {
+    list-style: none;
+    cursor: pointer;
+}
+
+.label-action::-webkit-details-marker {
+    display: none;
+}
+
+.label-menu-panel {
+    position: absolute;
+    z-index: 2;
+    top: calc(100% + 4px);
+    right: 0;
+    width: 220px;
+    display: grid;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+    box-shadow: 0 4px 14px rgb(38 50 60 / 16%);
+}
+
+.label-menu-panel label {
+    display: grid;
+    gap: 4px;
+    color: #68737D;
+    font-size: 0.75rem;
+}
+
+.label-menu-panel select,
+.label-menu-panel input {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    padding: 5px 8px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #26323C;
+    font: inherit;
+    font-size: 0.8125rem;
+}
+
+.label-apply-button {
+    min-height: 32px;
+    padding: 4px 8px;
+    border: 1px solid #2C5F8A;
+    border-radius: 4px;
+    background: #2C5F8A;
+    color: #FFFFFF;
+    font-size: 0.8125rem;
+}
+
+.label-apply-button:hover:not(:disabled) {
+    border-color: #26323C;
+    background: #26323C;
+}
+
+.label-apply-button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
 .message-action:hover:not(:disabled) {
     background: #FFFFFF;
     color: #2C5F8A;
@@ -213,6 +284,74 @@
 .message-action:disabled {
     cursor: wait;
     opacity: 0.55;
+}
+
+.detail-toolbar {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: -20px -24px 20px;
+    padding: 8px 24px;
+    border-bottom: 1px solid #D5DBE0;
+}
+
+.detail-toolbar-button {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #68737D;
+    cursor: pointer;
+    list-style: none;
+}
+
+.detail-toolbar-button:hover:not(:disabled) {
+    border-color: #B9C2C9;
+    background: #EEF4F8;
+    color: #2C5F8A;
+}
+
+.detail-toolbar-button:focus-visible {
+    outline: 2px solid #2C5F8A;
+    outline-offset: 2px;
+}
+
+.detail-toolbar-button::-webkit-details-marker {
+    display: none;
+}
+
+.detail-toolbar-button svg {
+    width: 18px;
+    height: 18px;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.detail-toolbar-button.is-starred {
+    color: #2C5F8A;
+}
+
+.detail-toolbar-button.delete-action:hover:not(:disabled) {
+    color: #A33A3A;
+}
+
+.detail-toolbar-button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
+.detail-label-menu {
+    flex: 0 0 42px;
+}
+
+.detail-label-menu .label-menu-panel {
+    top: calc(100% + 6px);
 }
 
 .inbox-status {
@@ -319,6 +458,61 @@
     flex-wrap: wrap;
     gap: 10px;
     padding-top: 4px;
+}
+
+.confirmation-backdrop {
+    position: fixed;
+    z-index: 10;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    background: rgb(38 50 60 / 42%);
+}
+
+.confirmation-dialog {
+    width: min(100%, 420px);
+    padding: 24px;
+    border: 1px solid #D5DBE0;
+    border-radius: 6px;
+    background: #FFFFFF;
+    box-shadow: 0 8px 28px rgb(38 50 60 / 22%);
+}
+
+.confirmation-dialog h2 {
+    margin: 0 0 12px;
+    color: #26323C;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
+.confirmation-dialog p {
+    margin: 0;
+    color: #68737D;
+    font-size: 0.875rem;
+}
+
+.confirmation-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 24px;
+}
+
+.detail-button.destructive-action {
+    border-color: #A33A3A;
+    background: #A33A3A;
+    color: #FFFFFF;
+}
+
+.detail-button.destructive-action:hover:not(:disabled) {
+    border-color: #842F2F;
+    background: #842F2F;
+}
+
+.detail-button.destructive-action:disabled {
+    cursor: wait;
+    opacity: 0.55;
 }
 
 .detail-button {

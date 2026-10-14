@@ -1,0 +1,108 @@
+@page "/borradores"
+@using IMC_.Models
+@using IMC_.Services
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<Borradores> Logger
+
+<PageTitle>Borradores</PageTitle>
+
+<MailboxFolderView Title="Borradores"
+                   EmptyText="No hay borradores."
+                   SearchInputId="buscar-borradores"
+                   Messages="@mensajes"
+                   IsLoading="@isLoading"
+                   ErrorMessage="@errorMessage"
+                   SearchTerm="@terminoBusqueda"
+                   SearchTermChanged="@BuscarMensajes"
+                   OpenDraftsInCompose="true" />
+
+@code {
+    private List<(MailboxEntry Entry, Message Message)> mensajes = [];
+    private bool isLoading = true;
+    private string terminoBusqueda = string.Empty;
+    private string? errorMessage;
+    private int searchRequestId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            mensajes = await SupabaseService.ObtenerBorradoresAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para consultar los borradores.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudieron cargar los borradores desde Supabase.");
+            errorMessage = "No se pudieron cargar los borradores. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al consultar los borradores.");
+            errorMessage = "Ocurrió un error al consultar los borradores.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task BuscarMensajes(string termino)
+    {
+        terminoBusqueda = termino;
+        var requestId = ++searchRequestId;
+        errorMessage = null;
+
+        try
+        {
+            List<(MailboxEntry Entry, Message Message)> resultados;
+            if (string.IsNullOrWhiteSpace(termino))
+            {
+                resultados = await SupabaseService.ObtenerBorradoresAsync();
+            }
+            else
+            {
+                await SupabaseService.Initialization;
+                if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+                {
+                    throw new InvalidOperationException("Se requiere una sesión autenticada para buscar mensajes.");
+                }
+
+                resultados = await SupabaseService.BuscarMensajes(userId, termino, "drafts");
+            }
+
+            if (requestId == searchRequestId)
+            {
+                mensajes = resultados;
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogWarning(exception, "No hay una sesión válida para buscar en los borradores.");
+                Navigation.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "No se pudieron buscar borradores desde Supabase.");
+                errorMessage = "No se pudieron buscar los borradores. Inténtalo de nuevo.";
+            }
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            if (requestId == searchRequestId)
+            {
+                Logger.LogError(exception, "Supabase devolvió un error al buscar en los borradores.");
+                errorMessage = "Ocurrió un error al buscar en los borradores.";
+            }
+        }
+    }
+}

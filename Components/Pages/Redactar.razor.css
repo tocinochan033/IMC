@@ -43,6 +43,12 @@
     flex-direction: column;
 }
 
+.compose-status {
+    padding: 24px;
+    color: #68737D;
+    font-size: 0.875rem;
+}
+
 .compose-field {
     min-height: 48px;
     display: grid;
@@ -124,6 +130,10 @@
     background: #F7F8F9;
 }
 
+.compose-footer {
+    gap: 10px;
+}
+
 .compose-send {
     min-height: 42px;
     display: inline-flex;
@@ -154,7 +164,45 @@
     opacity: 0.75;
 }
 
+.compose-save {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 0 16px;
+    border: 1px solid #B9C2C9;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #26323C;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.compose-save:hover:not(:disabled) {
+    background: #EEF4F8;
+}
+
+.compose-save:focus-visible {
+    outline: 3px solid rgb(44 95 138 / 25%);
+    outline-offset: 2px;
+}
+
+.compose-save:disabled {
+    cursor: wait;
+    opacity: 0.75;
+}
+
 .compose-send svg {
+    width: 17px;
+    height: 17px;
+    stroke: currentColor;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.compose-save svg {
     width: 17px;
     height: 17px;
     stroke: currentColor;
