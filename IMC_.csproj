@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <Content Include=".github\agents\code-reviewer.agent.md" />
+    <Content Include=".github\agents\database-agent.md" />
     <Content Include=".github\agents\frontend-developer.agent.md" />
     <Content Include=".github\agents\project-manager.agent.md" />
     <Content Include=".github\agents\qa-tester.agent.md" />

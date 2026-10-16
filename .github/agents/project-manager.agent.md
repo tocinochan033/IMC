@@ -1,6 +1,6 @@
 ---
 name: Project Manager
-description: Coordina tareas entre los agentes especializados del proyecto Micelio (Code Reviewer, Frontend Developer, QA Tester), define el alcance de una solicitud y delega el trabajo correspondiente a cada uno.
+description: Coordina tareas entre los agentes especializados del proyecto Micelio (Code Reviewer, Frontend Developer, QA Tester, Database Agent), define el alcance de una solicitud y delega el trabajo correspondiente a cada uno.
 tools: ['read', 'agent']
 ---
 

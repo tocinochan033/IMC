@@ -1,8 +1,22 @@
 using Supabase;
-using IMC_.Models;
+using MailboxEntry = IMC_.Models.MailboxEntry;
+using Message = IMC_.Models.Message;
+using Profile = IMC_.Models.Profile;
+using Team = IMC_.Models.Team;
+using TeamMember = IMC_.Models.TeamMember;
+using TeamTask = IMC_.Models.TeamTask;
+using UserLabel = IMC_.Models.UserLabel;
 using Operator = Supabase.Postgrest.Constants.Operator;
+using System.Text.Json;
 
 namespace IMC_.Services;
+
+public enum ResultadoAgregarMiembro
+{
+    Agregado,
+    CuentaNoEncontrada,
+    YaEsMiembro
+}
 
 public enum ResultadoEnvioCorreo
 {
@@ -54,6 +68,225 @@ public class SupabaseService
     {
         await Initialization;
         await Client.Auth.SignOut();
+    }
+
+    public async Task<List<Team>> ObtenerEquiposDelUsuario()
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("consultar los equipos");
+
+        var membershipsResponse = await Client
+            .From<TeamMember>()
+            .Filter("user_id", Operator.Equals, userId.ToString())
+            .Get();
+
+        var teamIds = membershipsResponse.Models
+            .Select(membership => membership.TeamId)
+            .Distinct()
+            .ToList();
+
+        if (teamIds.Count == 0)
+        {
+            return [];
+        }
+
+        var teamsResponse = await Client
+            .From<Team>()
+            .Where(team => teamIds.Contains(team.Id))
+            .Get();
+
+        return teamsResponse.Models;
+    }
+
+    public async Task<List<Profile>> ObtenerMiembrosDelEquipo(Guid teamId)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("consultar los miembros del equipo");
+
+        var membershipsResponse = await Client
+            .From<TeamMember>()
+            .Filter("team_id", Operator.Equals, teamId.ToString())
+            .Get();
+
+        var memberIds = membershipsResponse.Models
+            .Select(membership => membership.UserId)
+            .Distinct()
+            .ToList();
+
+        if (memberIds.Count == 0)
+        {
+            return [];
+        }
+
+        var profilesResponse = await Client
+            .From<Profile>()
+            .Where(profile => memberIds.Contains(profile.Id))
+            .Get();
+
+        return profilesResponse.Models;
+    }
+
+    public async Task<Team> CrearEquipo(string nombre, string? descripcion = null)
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("crear un equipo");
+
+        if (!await PuedeCrearEquipoAsync(userId))
+        {
+            throw new UnauthorizedAccessException(
+                "Solo los perfiles con rol project_manager o admin pueden crear equipos.");
+        }
+
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            throw new ArgumentException("El nombre del equipo es obligatorio.", nameof(nombre));
+        }
+
+        var response = await Client
+            .From<Team>()
+            .Insert(new Team
+            {
+                Name = nombre,
+                Description = descripcion,
+                CreatedBy = userId
+            });
+
+        var team = response.Models.FirstOrDefault()
+            ?? throw new InvalidOperationException("Supabase no devolvió el equipo creado.");
+
+        return team;
+    }
+
+    public async Task<bool> PuedeCrearEquipoAsync()
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("consultar los permisos para crear equipos");
+
+        return await PuedeCrearEquipoAsync(userId);
+    }
+
+    private async Task<bool> PuedeCrearEquipoAsync(Guid userId)
+    {
+        var profileResponse = await Client
+            .From<Profile>()
+            .Filter("id", Operator.Equals, userId.ToString())
+            .Get();
+
+        var role = profileResponse.Models.FirstOrDefault()?.Role;
+        return string.Equals(role?.Trim(), "project_manager", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public async Task<ResultadoAgregarMiembro> AgregarMiembro(Guid teamId, string email)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("agregar miembros al equipo");
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            throw new ArgumentException("El email es obligatorio.", nameof(email));
+        }
+
+        var profileResponse = await Client
+            .From<Profile>()
+            .Filter("email", Operator.Equals, email)
+            .Get();
+
+        var profile = profileResponse.Models.FirstOrDefault();
+        if (profile is null)
+        {
+            return ResultadoAgregarMiembro.CuentaNoEncontrada;
+        }
+
+        var existingMembership = await Client
+            .From<TeamMember>()
+            .Filter("team_id", Operator.Equals, teamId.ToString())
+            .Filter("user_id", Operator.Equals, profile.Id.ToString())
+            .Get();
+
+        if (existingMembership.Models.Count > 0)
+        {
+            return ResultadoAgregarMiembro.YaEsMiembro;
+        }
+
+        try
+        {
+            await Client
+                .From<TeamMember>()
+                .Insert(new TeamMember
+                {
+                    TeamId = teamId,
+                    UserId = profile.Id
+                });
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception) when (EsViolacionDeUnicidad(exception))
+        {
+            // La membresía pudo crearse después de la consulta anterior.
+            return ResultadoAgregarMiembro.YaEsMiembro;
+        }
+
+        return ResultadoAgregarMiembro.Agregado;
+    }
+
+    public async Task<List<TeamTask>> ObtenerTareas(Guid teamId)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("consultar las tareas");
+
+        var response = await Client
+            .From<TeamTask>()
+            .Filter("team_id", Operator.Equals, teamId.ToString())
+            .Get();
+
+        return response.Models;
+    }
+
+    public async Task<TeamTask> CrearTarea(
+        Guid teamId,
+        string titulo,
+        string? descripcion = null,
+        Guid? responsableId = null,
+        DateTimeOffset? venceEn = null)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("crear tareas");
+
+        if (string.IsNullOrWhiteSpace(titulo))
+        {
+            throw new ArgumentException("El título de la tarea es obligatorio.", nameof(titulo));
+        }
+
+        var response = await Client
+            .From<TeamTask>()
+            .Insert(new TeamTask
+            {
+                TeamId = teamId,
+                Title = titulo,
+                Description = descripcion,
+                Status = "todo",
+                AssigneeId = responsableId,
+                DueAt = venceEn
+            });
+
+        return response.Models.FirstOrDefault()
+            ?? throw new InvalidOperationException("Supabase no devolvió la tarea creada.");
+    }
+
+    public async Task ActualizarEstadoTarea(Guid taskId, string estado)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("actualizar tareas");
+
+        if (estado is not ("todo" or "in_progress" or "done"))
+        {
+            throw new ArgumentException("El estado de la tarea no es válido.", nameof(estado));
+        }
+
+        await Client
+            .From<TeamTask>()
+            .Filter("id", Operator.Equals, taskId.ToString())
+            .Set(task => task.Status, estado)
+            .Update();
     }
 
     public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerBandejaEntradaAsync() =>
@@ -274,6 +507,36 @@ public class SupabaseService
         value.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("%", "\\%", StringComparison.Ordinal)
             .Replace("_", "\\_", StringComparison.Ordinal);
+
+    private Guid ObtenerUsuarioAutenticadoId(string operacion)
+    {
+        if (!Guid.TryParse(Client.Auth.CurrentSession?.User?.Id, out var userId))
+        {
+            throw new InvalidOperationException($"Se requiere una sesión autenticada para {operacion}.");
+        }
+
+        return userId;
+    }
+
+    private static bool EsViolacionDeUnicidad(Supabase.Postgrest.Exceptions.PostgrestException exception)
+    {
+        if (string.IsNullOrWhiteSpace(exception.Content))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var content = JsonDocument.Parse(exception.Content);
+            return content.RootElement.TryGetProperty("code", out var code)
+                && code.ValueKind == JsonValueKind.String
+                && code.GetString() == "23505";
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     private async Task<List<(MailboxEntry Entry, Message Message)>> ObtenerMensajesDeCarpetaAsync(string folder)
     {
