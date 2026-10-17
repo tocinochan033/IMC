@@ -1,0 +1,134 @@
+@page "/configuracion"
+@inject SupabaseService SupabaseService
+@inject NavigationManager Navigation
+@inject ILogger<Configuracion> Logger
+
+<PageTitle>Configuración</PageTitle>
+
+<section class="settings-page" aria-labelledby="settings-title">
+    <header class="settings-header">
+        <p class="settings-eyebrow">Cuenta</p>
+        <h1 id="settings-title">Configuración</h1>
+        <p>Administra los espacios de trabajo de Micelio.</p>
+    </header>
+
+    @if (isLoading)
+    {
+        <p class="settings-message" role="status">Verificando permisos...</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(errorMessage))
+    {
+        <p class="settings-error" role="alert">@errorMessage</p>
+        <button type="button" class="settings-primary" @onclick="CargarPermisosAsync">Reintentar</button>
+    }
+    else if (!canCreateTeam)
+    {
+        <section class="settings-card">
+            <h2>Creación de equipos</h2>
+            <p>Esta opción está disponible únicamente para los perfiles con rol project_manager o admin.</p>
+            <a href="/equipos">Volver a equipos</a>
+        </section>
+    }
+    else
+    {
+        <section class="settings-card" aria-labelledby="create-team-title">
+            <div class="settings-card-heading">
+                <span class="settings-icon" aria-hidden="true">＋</span>
+                <div>
+                    <h2 id="create-team-title">Crear un equipo</h2>
+                    <p>Crea un nuevo espacio para organizar el trabajo de tu equipo.</p>
+                </div>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <p class="settings-error" role="alert">@errorMessage</p>
+            }
+            <form class="settings-form" @onsubmit="CrearEquipoAsync" @onsubmit:preventDefault>
+                <div class="settings-field">
+                    <label for="team-name">Nombre <span aria-hidden="true">*</span></label>
+                    <input id="team-name" type="text" maxlength="100" @bind="nombreEquipo" required
+                           placeholder="Ej. Diseño de producto" />
+                </div>
+                <div class="settings-field">
+                    <label for="team-description">Descripción <small>(opcional)</small></label>
+                    <textarea id="team-description" rows="3" maxlength="300" @bind="descripcionEquipo"
+                              placeholder="¿En qué trabajará este equipo?"></textarea>
+                </div>
+                <div class="settings-actions">
+                    <a href="/equipos" class="settings-cancel">Cancelar</a>
+                    <button type="submit" class="settings-primary" disabled="@isCreating">
+                        @(isCreating ? "Creando..." : "Crear equipo")
+                    </button>
+                </div>
+            </form>
+        </section>
+    }
+</section>
+
+@code {
+    private string nombreEquipo = "";
+    private string descripcionEquipo = "";
+    private string? errorMessage;
+    private bool isLoading = true;
+    private bool canCreateTeam;
+    private bool isCreating;
+
+    protected override async Task OnInitializedAsync() => await CargarPermisosAsync();
+
+    private async Task CargarPermisosAsync()
+    {
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            canCreateTeam = await SupabaseService.PuedeCrearEquipoAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "Se requiere una sesión para administrar equipos.");
+            Navigation.NavigateTo("/login");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo verificar el permiso para crear equipos.");
+            errorMessage = "No se pudieron verificar tus permisos. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task CrearEquipoAsync()
+    {
+        var name = nombreEquipo.Trim();
+        if (!canCreateTeam || isCreating || string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        isCreating = true;
+        errorMessage = null;
+        try
+        {
+            var team = await SupabaseService.CrearEquipo(name,
+                string.IsNullOrWhiteSpace(descripcionEquipo) ? null : descripcionEquipo.Trim());
+            Navigation.NavigateTo($"/equipos?teamId={team.Id}");
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Logger.LogWarning(exception, "El usuario no tiene permiso para crear equipos.");
+            canCreateTeam = false;
+            errorMessage = "Tu perfil ya no tiene permiso para crear equipos.";
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo crear el equipo.");
+            errorMessage = "No se pudo crear el equipo. Comprueba tu conexión e inténtalo de nuevo.";
+        }
+        finally
+        {
+            isCreating = false;
+        }
+    }
+}

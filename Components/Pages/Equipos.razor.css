@@ -5,13 +5,17 @@
     color: #26323C;
 }
 
-.teams-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 24px;
-    margin: 0 auto 22px;
+.teams-header,
+.teams-layout,
+.teams-alert,
+.teams-load-error {
     max-width: 1180px;
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.teams-header {
+    margin-bottom: 22px;
 }
 
 .teams-header h1,
@@ -25,58 +29,47 @@
 .teams-eyebrow {
     margin: 0 0 5px;
     color: #68737D;
-    font-size: 0.75rem;
+    font-size: .75rem;
     font-weight: 600;
-    letter-spacing: 0.07em;
+    letter-spacing: .07em;
     text-transform: uppercase;
 }
 
 .teams-intro {
     margin: 7px 0 0;
     color: #68737D;
-    font-size: 0.875rem;
+    font-size: .875rem;
 }
 
 .teams-layout {
     display: grid;
-    grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
-    gap: 20px;
-    max-width: 1180px;
-    min-height: 540px;
-    margin: 0 auto;
+    grid-template-columns: minmax(225px, 270px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
 }
 
 .teams-sidebar,
 .team-detail {
     min-width: 0;
     border: 1px solid #D5DBE0;
-    border-radius: 8px;
+    border-radius: 5px;
     background: #FFFFFF;
 }
 
 .teams-sidebar {
-    align-self: start;
     overflow: hidden;
 }
 
-.section-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+.sidebar-heading {
+    padding: 16px 17px 14px;
 }
 
-.teams-sidebar > .section-heading {
-    padding: 18px 18px 14px;
-}
-
-.section-heading h2,
+.sidebar-heading h2,
 .section-heading h3,
-.create-team-form h3,
-.add-member-form h3 {
+.tasks-heading h3 {
     margin: 0;
     color: #26323C;
-    font-size: 0.9375rem;
+    font-size: .9375rem;
     font-weight: 600;
 }
 
@@ -84,10 +77,11 @@
     display: block;
     margin-top: 4px;
     color: #68737D;
-    font-size: 0.75rem;
+    font-size: .75rem;
 }
 
-.team-list {
+.team-list,
+.member-list {
     margin: 0;
     padding: 0;
     list-style: none;
@@ -95,38 +89,46 @@
 
 .team-option {
     width: 100%;
-    min-height: 72px;
+    min-height: 66px;
     display: flex;
     align-items: center;
-    gap: 11px;
-    padding: 12px 16px;
+    gap: 10px;
+    padding: 11px 13px;
     border: 0;
     border-top: 1px solid #D5DBE0;
     background: #FFFFFF;
     color: #26323C;
     text-align: left;
     cursor: pointer;
-    transition: background-color 120ms ease;
 }
 
 .team-option:hover {
     background: #EEF4F8;
 }
 
+.team-option:disabled,
+.team-tab:disabled,
+.icon-button:disabled,
+.status-select:disabled,
+.text-button:disabled,
+.secondary-button:disabled {
+    cursor: not-allowed;
+    opacity: .65;
+}
+
 .team-option.selected {
+    padding-left: 10px;
     border-left: 3px solid #2C5F8A;
-    padding-left: 13px;
     background: #EAF1F7;
 }
 
 .team-option:focus-visible,
-.primary-button:focus-visible {
+.team-tab:focus-visible,
+.primary-button:focus-visible,
+.icon-button:focus-visible,
+.text-button:focus-visible {
     outline: 2px solid #2C5F8A;
     outline-offset: 2px;
-}
-
-.team-option:focus-visible {
-    outline-offset: -2px;
 }
 
 .team-avatar,
@@ -138,11 +140,12 @@
     border-radius: 50%;
     background: #EAF1F7;
     color: #2C5F8A;
-    font-size: 0.75rem;
+    font-size: .75rem;
     font-weight: 600;
 }
 
-.team-avatar {
+.team-avatar,
+.member-avatar {
     width: 38px;
     height: 38px;
 }
@@ -168,185 +171,157 @@
 .team-option-name,
 .member-name {
     color: #26323C;
-    font-size: 0.875rem;
+    font-size: .8125rem;
     font-weight: 500;
 }
 
 .team-option-description,
 .member-email {
     color: #68737D;
-    font-size: 0.75rem;
+    font-size: .6875rem;
 }
 
 .team-chevron {
     color: #8A949D;
-    font-size: 1.4rem;
-    line-height: 1;
+    font-size: 1.25rem;
 }
 
 .teams-empty-list {
     margin: 0;
-    padding: 4px 18px 18px;
+    padding: 4px 17px 18px;
     color: #68737D;
-    font-size: 0.8125rem;
+    font-size: .8125rem;
     line-height: 1.5;
-}
-
-.create-team-form {
-    display: flex;
-    flex-direction: column;
-    gap: 9px;
-    padding: 18px;
-    border-top: 1px solid #D5DBE0;
-    background: #F7F8F9;
 }
 
 .team-permission-notice {
+    display: flex;
+    gap: 9px;
     margin: 0;
-    padding: 16px 18px;
+    padding: 16px 17px;
     border-top: 1px solid #D5DBE0;
     background: #F7F8F9;
     color: #68737D;
-    font-size: 0.8125rem;
+    font-size: .75rem;
     line-height: 1.5;
 }
 
-.team-permission-notice p {
-    margin: 0;
-}
-
-.permission-retry-button {
-    margin-top: 10px;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: #2C5F8A;
-    font: inherit;
-    font-weight: 600;
-    text-decoration: underline;
-    cursor: pointer;
-}
-
-.permission-retry-button:focus-visible {
-    border-radius: 2px;
-    outline: 2px solid #2C5F8A;
-    outline-offset: 3px;
-}
-
-.create-team-form h3 {
-    margin-bottom: 3px;
-}
-
-.create-team-form label,
-.add-member-form label {
-    color: #26323C;
-    font-size: 0.8125rem;
-    font-weight: 500;
-}
-
-.create-team-form label span {
+.team-permission-notice span {
     color: #68737D;
-    font-weight: 400;
-}
-
-.create-team-form input,
-.create-team-form textarea,
-.member-input-row input {
-    width: 100%;
-    min-width: 0;
-    padding: 10px 11px;
-    border: 1px solid #D5DBE0;
-    border-radius: 5px;
-    background: #FFFFFF;
-    color: #26323C;
-    font: inherit;
-    font-size: 0.8125rem;
-}
-
-.create-team-form textarea {
-    resize: vertical;
-}
-
-.create-team-form input:focus,
-.create-team-form textarea:focus,
-.member-input-row input:focus {
-    border-color: #2C5F8A;
-    outline: 2px solid rgb(44 95 138 / 12%);
-}
-
-.create-team-form input::placeholder,
-.create-team-form textarea::placeholder,
-.member-input-row input::placeholder {
-    color: #8A949D;
-}
-
-.primary-button {
-    min-height: 40px;
-    padding: 9px 14px;
-    border: 1px solid #2C5F8A;
-    border-radius: 5px;
-    background: #2C5F8A;
-    color: #FFFFFF;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 120ms ease;
-}
-
-.primary-button:hover:not(:disabled) {
-    border-color: #26323C;
-    background: #26323C;
-}
-
-.primary-button:disabled {
-    cursor: not-allowed;
-    opacity: 0.65;
 }
 
 .team-detail {
-    padding: 26px 30px;
+    overflow: hidden;
 }
 
 .detail-header {
+    min-height: 90px;
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid #D5DBE0;
+    gap: 14px;
+    padding: 20px 24px;
 }
 
 .detail-team-avatar {
-    width: 58px;
-    height: 58px;
-    font-size: 1rem;
+    width: 44px;
+    height: 44px;
+    font-size: .875rem;
+}
+
+.detail-team-copy {
+    min-width: 0;
+    flex: 1;
+}
+
+.detail-team-copy .teams-eyebrow {
+    font-size: .625rem;
+    margin-bottom: 2px;
 }
 
 .detail-header h2 {
-    font-size: 1.25rem;
+    font-size: 1.125rem;
 }
 
 .detail-description {
-    margin: 6px 0 0;
+    margin: 4px 0 0;
     color: #68737D;
-    font-size: 0.8125rem;
+    font-size: .75rem;
+}
+
+.team-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    color: #26323C;
+    font-size: .75rem;
+}
+
+.team-meta small {
+    color: #68737D;
+    font-size: .6875rem;
+}
+
+.team-tabs {
+    display: flex;
+    gap: 22px;
+    height: 43px;
+    padding: 0 23px;
+    border-top: 1px solid #D5DBE0;
+    border-bottom: 1px solid #D5DBE0;
+}
+
+.team-tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 0 1px;
+    border: 0;
+    background: transparent;
+    color: #68737D;
+    font: inherit;
+    font-size: .8125rem;
+    cursor: pointer;
+}
+
+.team-tab.active {
+    color: #2C5F8A;
+}
+
+.team-tab.active::after {
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    background: #2C5F8A;
+    content: "";
+}
+
+.tab-count {
+    color: #8A949D;
+    font-size: .6875rem;
 }
 
 .members-section {
-    padding: 23px 0 25px;
+    min-height: 300px;
+    padding: 23px 25px 28px;
 }
 
-.members-section > .section-heading {
-    margin-bottom: 12px;
+.section-heading {
+    margin-bottom: 14px;
 }
 
-.member-list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
+.section-heading p,
+.tasks-heading p {
+    margin: 5px 0 0;
+    color: #68737D;
+    font-size: .75rem;
 }
 
 .member-row {
-    min-height: 66px;
+    min-height: 62px;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -354,68 +329,98 @@
     border-bottom: 1px solid #D5DBE0;
 }
 
-.member-avatar {
-    width: 38px;
-    height: 38px;
+.member-management {
+    margin-top: 26px;
+    padding-top: 20px;
+    border-top: 1px solid #D5DBE0;
 }
 
-.members-empty,
-.teams-status {
+.member-management .section-heading {
+    margin-bottom: 10px;
+}
+
+.member-management .section-heading h3 {
     margin: 0;
-    padding: 18px;
-    border: 1px dashed #D5DBE0;
-    border-radius: 6px;
+    color: #26323C;
+    font-size: .875rem;
+    font-weight: 600;
+}
+
+.invite-policy-notice {
+    padding: 11px 12px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+}
+
+.invite-policy-notice strong {
+    color: #26323C;
+    font-weight: 600;
+}
+
+.member-invite-form {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.member-invite-form .form-field {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.member-invite-form .primary-button {
+    flex: 0 0 auto;
+}
+
+.member-invite-form input:disabled {
+    background: #F3F5F7;
+    color: #8A949D;
+}
+
+.members-load-form-error {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.task-form-fields {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.task-form-fields:disabled {
+    opacity: .7;
+}
+
+.creator-badge {
+    padding: 4px 8px;
+    border-radius: 12px;
+    background: #EAF1F7;
+    color: #2C5F8A;
+    font-size: .6875rem;
+}
+
+.teams-status,
+.members-empty {
+    margin: 0;
+    padding: 16px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
     color: #68737D;
-    font-size: 0.8125rem;
-}
-
-.teams-status {
-    max-width: 1180px;
-    margin: 0 auto;
-    border-style: solid;
-    background: #FFFFFF;
-}
-
-.teams-load-error {
-    max-width: 1180px;
-    margin: 0 auto;
-}
-
-.teams-load-error .teams-status {
-    margin: 0;
+    font-size: .8125rem;
 }
 
 .teams-load-error .primary-button {
-    margin-top: 12px;
-}
-
-.add-member-form {
-    display: flex;
-    flex-direction: column;
-    gap: 11px;
-    padding: 20px;
-    border: 1px solid #D5DBE0;
-    border-radius: 7px;
-    background: #F7F8F9;
-}
-
-.add-member-form p {
-    margin: 5px 0 0;
-    color: #68737D;
-    font-size: 0.8125rem;
-}
-
-.member-input-row {
-    display: flex;
-    gap: 10px;
-}
-
-.member-input-row input {
-    flex: 1;
+    margin-top: 10px;
 }
 
 .detail-empty {
-    min-height: 400px;
+    min-height: 420px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -425,38 +430,36 @@
 }
 
 .empty-mark {
-    width: 48px;
-    height: 48px;
+    width: 46px;
+    height: 46px;
     display: grid;
     place-items: center;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
     border-radius: 50%;
     background: #EAF1F7;
     color: #2C5F8A;
-    font-size: 1.5rem;
+    font-size: 1.25rem;
 }
 
 .detail-empty h2 {
     margin: 0;
     font-size: 1rem;
-    font-weight: 600;
 }
 
 .detail-empty p {
     max-width: 320px;
     margin: 8px 0 0;
     color: #68737D;
-    font-size: 0.8125rem;
+    font-size: .8125rem;
     line-height: 1.5;
 }
 
 .teams-alert {
-    max-width: 1180px;
-    margin: 0 auto 14px;
+    margin-bottom: 14px;
     padding: 11px 14px;
     border: 1px solid transparent;
     border-radius: 5px;
-    font-size: 0.8125rem;
+    font-size: .8125rem;
 }
 
 .teams-alert-error {
@@ -471,6 +474,308 @@
     color: #2C5F8A;
 }
 
+.primary-button,
+.secondary-button {
+    min-height: 38px;
+    padding: 8px 13px;
+    border: 1px solid #2C5F8A;
+    border-radius: 5px;
+    font: inherit;
+    font-size: .8125rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.primary-button {
+    background: #2C5F8A;
+    color: #FFFFFF;
+}
+
+.primary-button:hover:not(:disabled) {
+    border-color: #26323C;
+    background: #26323C;
+}
+
+.primary-button:disabled {
+    cursor: not-allowed;
+    opacity: .65;
+}
+
+.secondary-button {
+    border-color: #D5DBE0;
+    background: #FFFFFF;
+    color: #26323C;
+}
+
+.tasks-section {
+    padding: 24px 23px 20px;
+}
+
+.tasks-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.tasks-heading h3 {
+    font-size: 1rem;
+}
+
+.new-task-button {
+    min-width: 120px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.new-task-button span {
+    font-size: 1.125rem;
+    line-height: 1;
+}
+
+.kanban-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.kanban-column {
+    min-width: 0;
+    min-height: 420px;
+    padding: 12px 9px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+}
+
+.kanban-column-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 3px;
+}
+
+.kanban-column-heading > div {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.kanban-column-heading h4 {
+    margin: 0;
+    color: #26323C;
+    font-size: .8125rem;
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #8A949D;
+}
+
+.in-progress .status-dot {
+    background: #2C5F8A;
+}
+
+.done .status-dot {
+    background: #57866F;
+}
+
+.column-count {
+    color: #68737D;
+    font-size: .6875rem;
+}
+
+.status-key {
+    display: block;
+    margin: 5px 3px 14px;
+    color: #8A949D;
+    font-size: .625rem;
+}
+
+.kanban-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.column-empty {
+    margin: 0;
+    padding: 16px 8px;
+    color: #8A949D;
+    font-size: .75rem;
+    text-align: center;
+}
+
+.task-board-notice {
+    margin: 16px 0 0;
+    color: #68737D;
+    font-size: .6875rem;
+}
+
+.task-form {
+    padding: 20px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+}
+
+.task-form-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.task-form-heading h4 {
+    margin: 0;
+    color: #26323C;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.task-form-heading p {
+    margin: 5px 0 0;
+    color: #68737D;
+    font-size: .75rem;
+}
+
+.text-button {
+    padding: 5px 0;
+    border: 0;
+    background: transparent;
+    color: #2C5F8A;
+    font: inherit;
+    font-size: .75rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.task-form-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 10px 12px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+}
+
+.task-form-summary > span {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.task-form-summary > span:last-child {
+    align-items: flex-end;
+}
+
+.task-form-summary small {
+    color: #8A949D;
+    font-size: .625rem;
+}
+
+.task-form-summary strong {
+    color: #26323C;
+    font-size: .75rem;
+    font-weight: 500;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-bottom: 16px;
+}
+
+.form-field label {
+    color: #26323C;
+    font-size: .8125rem;
+    font-weight: 500;
+}
+
+.optional-label,
+.field-help {
+    color: #8A949D;
+    font-size: .6875rem;
+    font-weight: 400;
+}
+
+.required-mark {
+    color: #2C5F8A;
+}
+
+.form-field input,
+.form-field textarea,
+.form-field select {
+    width: 100%;
+    min-height: 40px;
+    padding: 9px 11px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #26323C;
+    font: inherit;
+    font-size: .8125rem;
+}
+
+.form-field textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.form-field input:focus,
+.form-field textarea:focus,
+.form-field select:focus {
+    border-color: #2C5F8A;
+    outline: 2px solid rgb(44 95 138 / 12%);
+}
+
+.task-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.field-help {
+    line-height: 1.4;
+}
+
+.task-form-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid #D5DBE0;
+    color: #8A949D;
+    font-size: .6875rem;
+}
+
+.task-form-footer > div {
+    display: flex;
+    gap: 9px;
+}
+
+@media (max-width: 1040px) {
+    .kanban-board {
+        grid-template-columns: 1fr;
+    }
+
+    .kanban-column {
+        min-height: 130px;
+    }
+}
+
 @media (max-width: 760px) {
     .teams-page {
         padding: 22px 16px 32px;
@@ -481,17 +786,48 @@
         gap: 14px;
     }
 
-    .team-detail {
-        padding: 21px 18px;
+    .tasks-section {
+        padding: 20px 16px;
     }
 }
 
-@media (max-width: 480px) {
-    .member-input-row {
+@media (max-width: 520px) {
+    .detail-header {
+        padding: 17px 15px;
+    }
+
+    .team-tabs {
+        padding: 0 15px;
+    }
+
+    .task-form {
+        padding: 15px;
+    }
+
+    .task-form-row {
+        grid-template-columns: 1fr;
+        gap: 0;
+    }
+
+    .task-form-heading {
         flex-direction: column;
     }
 
-    .team-detail {
-        padding: 18px 14px;
+    .task-form-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .task-form-footer > div {
+        width: 100%;
+    }
+
+    .task-form-footer button {
+        flex: 1;
+    }
+
+    .member-invite-form {
+        align-items: stretch;
+        flex-direction: column;
     }
 }

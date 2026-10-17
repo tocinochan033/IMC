@@ -8,7 +8,6 @@ namespace IMC_.Models;
 public class TeamTask : BaseModel
 {
     [PrimaryKey("id", false)]
-    [Column("id")]
     public Guid Id { get; set; }
 
     [Column("team_id")]

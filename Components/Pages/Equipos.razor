@@ -1,6 +1,7 @@
 @page "/equipos"
+@using System.Globalization
+@using Microsoft.AspNetCore.WebUtilities
 @using IMC_.Models
-@using IMC_.Services
 @inject SupabaseService SupabaseService
 @inject NavigationManager Navigation
 @inject ILogger<Equipos> Logger
@@ -16,68 +17,55 @@
         </div>
     </header>
 
-    @if (!string.IsNullOrWhiteSpace(errorMessage))
+    @if (!string.IsNullOrWhiteSpace(pageError))
     {
-        <p class="teams-alert teams-alert-error" role="alert">@errorMessage</p>
+        <p class="teams-alert teams-alert-error" role="alert">@pageError</p>
     }
-    @if (!string.IsNullOrWhiteSpace(memberValidationMessage))
+
+    @if (!string.IsNullOrWhiteSpace(feedback))
     {
-        <p class="teams-alert teams-alert-error" role="status">@memberValidationMessage</p>
-    }
-    @if (!string.IsNullOrWhiteSpace(feedbackMessage))
-    {
-        <p class="teams-alert teams-alert-success" role="status">@feedbackMessage</p>
-    }
-    @if (!string.IsNullOrWhiteSpace(teamsLoadError) &&
-         !string.IsNullOrWhiteSpace(pendingTeamCreationConfirmation))
-    {
-        <p class="teams-alert teams-alert-success" role="status">@pendingTeamCreationConfirmation</p>
+        <p class="teams-alert teams-alert-success" role="status">@feedback</p>
     }
 
     @if (isLoadingTeams)
     {
         <p class="teams-status" role="status">Cargando tus equipos...</p>
     }
-    else if (!string.IsNullOrWhiteSpace(teamsLoadError))
+    else if (!string.IsNullOrWhiteSpace(teamsError))
     {
         <div class="teams-load-error">
-            <p class="teams-status" role="alert">@teamsLoadError</p>
-            <button type="button" class="primary-button" @onclick="CargarEquiposAsync">
-                Reintentar cargar equipos
-            </button>
+            <p class="teams-status" role="alert">@teamsError</p>
+            <button type="button" class="primary-button" @onclick="CargarEquiposAsync">Reintentar</button>
         </div>
     }
     else
     {
         <div class="teams-layout">
             <aside class="teams-sidebar" aria-label="Tus equipos">
-                <div class="section-heading">
-                    <div>
-                        <h2>Mis equipos</h2>
-                        <span class="teams-count">@equipos.Count @(equipos.Count == 1 ? "equipo" : "equipos")</span>
-                    </div>
+                <div class="sidebar-heading">
+                    <h2>Mis equipos</h2>
+                    <span class="teams-count">@equipos.Count @(equipos.Count == 1 ? "equipo" : "equipos")</span>
                 </div>
-
                 @if (equipos.Count == 0)
                 {
-                    <p class="teams-empty-list">Todavía no tienes equipos. Crea uno para empezar.</p>
+                    <p class="teams-empty-list">Todavía no tienes equipos.</p>
                 }
                 else
                 {
                     <ul class="team-list">
-                        @foreach (var equipo in equipos)
+                        @foreach (var team in equipos)
                         {
-                            var isSelected = equipoSeleccionadoId == equipo.Id;
+                            var selected = selectedTeamId == team.Id;
                             <li>
-                                <button type="button"
-                                        class="team-option @(isSelected ? "selected" : string.Empty)"
-                                        aria-current="@(isSelected ? "true" : null)"
-                                        @onclick="() => SeleccionarEquipoAsync(equipo.Id)">
-                                    <span class="team-avatar" aria-hidden="true">@Iniciales(equipo.Name)</span>
+                                <button type="button" class="team-option @(selected ? "selected" : "")"
+                                        aria-current="@(selected ? "true" : null)"
+                                        disabled="@(isTaskOperationInFlight || isMemberInviteInFlight)"
+                                        @onclick="() => SeleccionarEquipoAsync(team.Id)">
+                                    <span class="team-avatar" aria-hidden="true">@Iniciales(team.Name)</span>
                                     <span class="team-option-copy">
-                                        <span class="team-option-name">@equipo.Name</span>
+                                        <span class="team-option-name">@team.Name</span>
                                         <span class="team-option-description">
-                                            @(string.IsNullOrWhiteSpace(equipo.Description) ? "Sin descripción" : equipo.Description)
+                                            @(string.IsNullOrWhiteSpace(team.Description) ? "Sin descripción" : team.Description)
                                         </span>
                                     </span>
                                     <span class="team-chevron" aria-hidden="true">›</span>
@@ -86,57 +74,26 @@
                         }
                     </ul>
                 }
-
-                @if (isCheckingTeamCreationPermission)
-                {
-                    <p class="team-permission-notice" role="status">Verificando permisos para crear equipos...</p>
-                }
-                else if (!string.IsNullOrWhiteSpace(teamCreationPermissionError))
-                {
-                    <div class="team-permission-notice" role="alert">
-                        <p>@teamCreationPermissionError</p>
-                        <button type="button" class="permission-retry-button" @onclick="CargarPermisosCrearEquipoAsync">
-                            Reintentar
-                        </button>
-                    </div>
-                }
-                else if (canCreateTeam)
-                {
-                    <form class="create-team-form" @onsubmit="CrearEquipoAsync" @onsubmit:preventDefault>
-                        <h3>Crear un equipo</h3>
-                        <label for="team-name">Nombre</label>
-                        <input id="team-name" type="text" @bind="nombreNuevoEquipo" maxlength="100"
-                               placeholder="Ej. Diseño de producto" required />
-                        <label for="team-description">Descripción <span>(opcional)</span></label>
-                        <textarea id="team-description" @bind="descripcionNuevoEquipo" maxlength="300"
-                                  rows="2" placeholder="¿En qué trabajará este equipo?"></textarea>
-                        <button type="submit" class="primary-button" disabled="@isCreatingTeam">
-                            @(isCreatingTeam ? "Creando..." : "Crear equipo")
-                        </button>
-                    </form>
-                }
-                else
-                {
-                    <p class="team-permission-notice" role="status">
-                        Solo los perfiles con rol project_manager o admin pueden crear equipos. Puedes seguir consultando tus equipos.
-                    </p>
-                }
+                <p class="team-permission-notice">
+                    <span aria-hidden="true">ⓘ</span>
+                    Como miembro, puedes crear, editar y eliminar tareas del equipo.
+                </p>
             </aside>
 
             <section class="team-detail" aria-label="Detalles del equipo seleccionado">
                 @if (EquipoSeleccionado is null)
                 {
                     <div class="detail-empty">
-                        <span class="empty-mark" aria-hidden="true">+</span>
-                        <h2>Tu espacio de equipo</h2>
-                        <p>Selecciona un equipo para ver a sus miembros.</p>
+                        <span class="empty-mark" aria-hidden="true">✦</span>
+                        <h2>@(equipos.Count == 0 ? "Aún no tienes equipos" : "Selecciona un equipo")</h2>
+                        <p>@(equipos.Count == 0 ? "Cuando formes parte de un equipo aparecerá aquí." : "Elige un equipo para consultar sus miembros y tareas.")</p>
                     </div>
                 }
                 else
                 {
                     <header class="detail-header">
                         <div class="detail-team-avatar" aria-hidden="true">@Iniciales(EquipoSeleccionado.Name)</div>
-                        <div>
+                        <div class="detail-team-copy">
                             <p class="teams-eyebrow">Equipo</p>
                             <h2>@EquipoSeleccionado.Name</h2>
                             @if (!string.IsNullOrWhiteSpace(EquipoSeleccionado.Description))
@@ -144,70 +101,281 @@
                                 <p class="detail-description">@EquipoSeleccionado.Description</p>
                             }
                         </div>
+                        <div class="team-meta">
+                            <span>@(EquipoSeleccionado.CreatedBy == currentUserId ? "Creador" : "Miembro")</span>
+                            <small>
+                                @(isLoadingMembers ? "Cargando miembros…" :
+                                    membersError is not null ? "Miembros no disponibles" :
+                                    $"{miembros.Count} {(miembros.Count == 1 ? "persona" : "personas")}")
+                            </small>
+                        </div>
                     </header>
 
-                    <section class="members-section" aria-labelledby="members-title">
-                        <div class="section-heading">
-                            <div>
-                                <h3 id="members-title">Miembros</h3>
-                                @if (!isLoadingMembers && memberLoadError is null)
-                                {
-                                    <span class="teams-count">@miembros.Count @(miembros.Count == 1 ? "persona" : "personas")</span>
-                                }
-                            </div>
-                        </div>
+                    <nav class="team-tabs" aria-label="Secciones del equipo">
+                        <button type="button" class="team-tab @(activeTab == "members" ? "active" : "")"
+                                aria-current="@(activeTab == "members" ? "page" : null)"
+                                disabled="@(isTaskOperationInFlight || isMemberInviteInFlight)"
+                                @onclick='() => activeTab = "members"'>
+                            <span aria-hidden="true">♧</span> Miembros
+                            @if (membersLoaded)
+                            {
+                                <span class="tab-count">@miembros.Count</span>
+                            }
+                        </button>
+                        <button type="button" class="team-tab @(activeTab == "tasks" ? "active" : "")"
+                                aria-current="@(activeTab == "tasks" ? "page" : null)"
+                                disabled="@(isTaskOperationInFlight || isMemberInviteInFlight)"
+                                @onclick='() => activeTab = "tasks"'>
+                            <span aria-hidden="true">▦</span> Tareas
+                        </button>
+                    </nav>
 
-                        @if (isLoadingMembers)
-                        {
-                            <p class="teams-status" role="status">Cargando miembros...</p>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(memberLoadError))
-                        {
-                            <div class="teams-load-error">
-                                <p class="members-empty" role="alert">@memberLoadError</p>
-                                <button type="button" class="primary-button" @onclick="ReintentarCargarMiembrosAsync">
-                                    Reintentar cargar miembros
-                                </button>
+                    @if (activeTab == "members")
+                    {
+                        <section class="members-section" aria-labelledby="members-title">
+                            <div class="section-heading">
+                                <div>
+                                    <h3 id="members-title">Miembros del equipo</h3>
+                                    <p>Personas que colaboran en este equipo.</p>
+                                </div>
                             </div>
-                        }
-                        else if (miembros.Count == 0)
-                        {
-                            <p class="members-empty">No se encontraron miembros para este equipo.</p>
-                        }
-                        else
-                        {
-                            <ul class="member-list">
-                                @foreach (var miembro in miembros.OrderBy(profile =>
-                                    string.IsNullOrWhiteSpace(profile.FullName) ? profile.Email : profile.FullName,
-                                    StringComparer.OrdinalIgnoreCase))
-                                {
-                                    <li class="member-row">
-                                        <span class="member-avatar" aria-hidden="true">@Iniciales(NombreMiembro(miembro))</span>
-                                        <span class="member-copy">
-                                            <span class="member-name">@NombreMiembro(miembro)</span>
-                                            <span class="member-email">@miembro.Email</span>
-                                        </span>
-                                    </li>
-                                }
-                            </ul>
-                        }
-                    </section>
+                            @if (isLoadingMembers)
+                            {
+                                <p class="teams-status" role="status">Cargando miembros...</p>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(membersError))
+                            {
+                                <div class="teams-load-error">
+                                    <p class="members-empty" role="alert">@membersError</p>
+                                    <button type="button" class="primary-button" @onclick="() => CargarMiembrosAsync(EquipoSeleccionado.Id)">Reintentar</button>
+                                </div>
+                            }
+                            else if (miembros.Count == 0)
+                            {
+                                <p class="members-empty">No se encontraron miembros para este equipo.</p>
+                            }
+                            else
+                            {
+                                <ul class="member-list">
+                                    @foreach (var member in miembros.OrderBy(NombreMiembro, StringComparer.OrdinalIgnoreCase))
+                                    {
+                                        <li class="member-row">
+                                            <span class="member-avatar" aria-hidden="true">@Iniciales(NombreMiembro(member))</span>
+                                            <span class="member-copy">
+                                                <span class="member-name">@NombreMiembro(member)</span>
+                                                <span class="member-email">@member.Email</span>
+                                            </span>
+                                            @if (member.Id == EquipoSeleccionado.CreatedBy)
+                                            {
+                                                <span class="creator-badge">Creador</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
 
-                    <form class="add-member-form" @onsubmit="AgregarMiembroAsync" @onsubmit:preventDefault>
-                        <div>
-                            <h3>Invitar a alguien</h3>
-                            <p>Agrega una cuenta existente usando su correo exacto.</p>
-                        </div>
-                        <label for="member-email">Correo electrónico</label>
-                        <div class="member-input-row">
-                            <input id="member-email" type="email" @bind="emailNuevoMiembro"
-                                   placeholder="persona@ejemplo.com" required />
-                            <button type="submit" class="primary-button"
-                                    disabled="@IsAddingMember(EquipoSeleccionado.Id)">
-                                @(IsAddingMember(EquipoSeleccionado.Id) ? "Agregando..." : "Agregar miembro")
-                            </button>
-                        </div>
-                    </form>
+                            @if (PuedeInvitarAlEquipo)
+                            {
+                                <section class="member-management" aria-labelledby="invite-member-title">
+                                    <div class="section-heading">
+                                        <h3 id="invite-member-title">Agregar miembro</h3>
+                                        <p>Invita a una cuenta existente con su correo electrónico.</p>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(memberInviteError))
+                                    {
+                                        <p class="teams-alert teams-alert-error" role="alert">@memberInviteError</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(memberInviteFeedback))
+                                    {
+                                        <p class="teams-alert teams-alert-success" role="status">@memberInviteFeedback</p>
+                                    }
+                                    <form class="member-invite-form" @onsubmit="AgregarMiembroAsync" @onsubmit:preventDefault>
+                                        <div class="form-field">
+                                            <label for="member-email">Correo electrónico</label>
+                                            <input id="member-email" type="email" @bind="memberEmail" required
+                                                   disabled="@isMemberInviteInFlight" />
+                                        </div>
+                                        <button type="submit" class="primary-button"
+                                                disabled="@isMemberInviteInFlight">
+                                            @(isMemberInviteInFlight ? "Agregando..." : "Agregar miembro")
+                                        </button>
+                                    </form>
+                                </section>
+                            }
+                            else if (isLoadingTeams || teamsError is not null || !EsMiembroDelEquipoSeleccionado)
+                            {
+                                <p class="teams-status" role="status">
+                                    No se muestran las opciones para invitar hasta confirmar que perteneces al equipo.
+                                </p>
+                            }
+                            else if (isLoadingCurrentUserRole)
+                            {
+                                <p class="teams-status" role="status">Verificando tu rol para mostrar las opciones de invitación...</p>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(currentUserRoleError))
+                            {
+                                <div class="teams-load-error">
+                                    <p class="teams-status" role="alert">@currentUserRoleError</p>
+                                    <button type="button" class="primary-button" @onclick="CargarRolUsuarioAsync">Reintentar</button>
+                                </div>
+                            }
+                            else if (string.IsNullOrWhiteSpace(currentUserRole))
+                            {
+                                <p class="teams-status" role="status">
+                                    No se pudo determinar tu rol. No se muestran las opciones para invitar.
+                                </p>
+                            }
+                            else
+                            {
+                                <p class="teams-status" role="status">
+                                    Invitar está disponible para miembros del equipo con rol team_manager, project_manager o admin.
+                                </p>
+                            }
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="tasks-section" aria-labelledby="tasks-title">
+                            <header class="tasks-heading">
+                                <div>
+                                    <h3 id="tasks-title">Tareas del equipo</h3>
+                                    @if (!isLoadingTasks && tasksError is null)
+                                    {
+                                        <p>@tareas.Count @(tareas.Count == 1 ? "tarea" : "tareas") · Todos los miembros pueden gestionarlas</p>
+                                    }
+                                </div>
+                                @if (!isTaskFormOpen && tasksError is null)
+                                {
+                                    <button type="button" class="primary-button new-task-button"
+                                            disabled="@isTaskOperationInFlight" @onclick="AbrirNuevaTarea">
+                                        <span aria-hidden="true">＋</span> Nueva tarea
+                                    </button>
+                                }
+                            </header>
+
+                            @if (isTaskFormOpen)
+                            {
+                                <form class="task-form" @onsubmit="GuardarTareaAsync" @onsubmit:preventDefault>
+                                    <header class="task-form-heading">
+                                        <div>
+                                            <h4>@(editingTaskId is null ? "Crear tarea" : "Editar tarea")</h4>
+                                            <p>Añade una tarea al equipo. Solo el título es obligatorio.</p>
+                                        </div>
+                                        <button type="button" class="text-button" disabled="@isTaskOperationInFlight"
+                                                @onclick="CerrarFormulario">← Volver a tareas</button>
+                                    </header>
+                                    @if (isLoadingMembers)
+                                    {
+                                        <p class="teams-status" role="status">Cargando miembros. El formulario estará disponible cuando termine la carga.</p>
+                                    }
+                                    else if (membersError is not null)
+                                    {
+                                        <div class="members-load-form-error">
+                                            <p class="members-empty" role="alert">
+                                                No se pueden editar ni guardar tareas hasta cargar los miembros del equipo.
+                                                @membersError
+                                            </p>
+                                            <button type="button" class="primary-button"
+                                                    disabled="@isTaskOperationInFlight"
+                                                    @onclick="() => CargarMiembrosAsync(EquipoSeleccionado.Id)">Reintentar carga de miembros</button>
+                                        </div>
+                                    }
+                                    <div class="task-form-summary">
+                                        <span><small>Equipo asociado</small><strong>⌑ @EquipoSeleccionado.Name</strong></span>
+                                        <span><small>Estado @(editingTaskId is null ? "inicial" : "actual")</small><strong>@EtiquetaEstado(editingTaskId is null ? "todo" : estadoEdicion)</strong></span>
+                                    </div>
+                                    <fieldset class="task-form-fields" disabled="@(!membersLoaded || isTaskOperationInFlight)">
+                                        <div class="form-field">
+                                            <label for="task-title">Título <span class="required-mark">*</span></label>
+                                            <input id="task-title" type="text" maxlength="160" @bind="tituloTarea" required />
+                                        </div>
+                                        <div class="form-field">
+                                            <label for="task-description">Descripción <span class="optional-label">(opcional)</span></label>
+                                            <textarea id="task-description" rows="4" maxlength="2000" @bind="descripcionTarea"></textarea>
+                                        </div>
+                                        <div class="task-form-row">
+                                            <div class="form-field">
+                                                <label for="task-assignee">Responsable <span class="optional-label">(opcional)</span></label>
+                                                <select id="task-assignee" @bind="responsableTarea">
+                                                <option value="">Sin asignar</option>
+                                                @if (editingOriginalAssigneeId is Guid originalAssignee &&
+                                                     !miembros.Any(member => member.Id == originalAssignee))
+                                                {
+                                                    <option value="@originalAssignee">Asignación actual no disponible (conservar)</option>
+                                                }
+                                                @foreach (var member in miembros)
+                                                {
+                                                    <option value="@member.Id">@member.Email</option>
+                                                }
+                                                </select>
+                                                <small class="field-help">Solo puedes asignar la tarea a miembros de este equipo. También puedes elegir explícitamente “Sin asignar”.</small>
+                                            </div>
+                                            <div class="form-field">
+                                                <label for="task-due-date">Fecha límite <span class="optional-label">(opcional)</span></label>
+                                                <input id="task-due-date" type="date" value="@fechaLimiteTarea"
+                                                       @onchange="ActualizarFechaLimite" />
+                                                <small class="field-help">Puedes dejarla vacía si no hay fecha definida.</small>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                    <footer class="task-form-footer">
+                                        <span><span class="required-mark">*</span> Campo obligatorio</span>
+                                        <div>
+                                            <button type="button" class="secondary-button" disabled="@isTaskOperationInFlight"
+                                                    @onclick="CerrarFormulario">Cancelar</button>
+                                            <button type="submit" class="primary-button"
+                                                    disabled="@(!membersLoaded || isTaskOperationInFlight || string.IsNullOrWhiteSpace(tituloTarea))">
+                                                @(isTaskOperationInFlight ? "Guardando..." : editingTaskId is null ? "Crear tarea" : "Guardar cambios")
+                                            </button>
+                                        </div>
+                                    </footer>
+                                </form>
+                            }
+                            else if (isLoadingTasks)
+                            {
+                                <p class="teams-status" role="status">Cargando tareas...</p>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(tasksError))
+                            {
+                                <div class="teams-load-error">
+                                    <p class="teams-status" role="alert">@tasksError</p>
+                                    <button type="button" class="primary-button" @onclick="() => CargarTareasAsync(EquipoSeleccionado.Id)">Reintentar</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="kanban-board">
+                                    @foreach (var column in KanbanColumns)
+                                    {
+                                        var columnTasks = tareas.Where(task => task.Status == column.Status).ToList();
+                                        <section class="kanban-column @column.CssClass" aria-label="@column.Title">
+                                            <header class="kanban-column-heading">
+                                                <div><span class="status-dot"></span><h4>@column.Title</h4></div>
+                                                <span class="column-count">@columnTasks.Count</span>
+                                            </header>
+                                            <small class="status-key">@column.Status</small>
+                                            <div class="kanban-cards">
+                                                @if (columnTasks.Count == 0)
+                                                {
+                                                    <p class="column-empty">No hay tareas</p>
+                                                }
+                                                @foreach (var task in columnTasks)
+                                                {
+                                                    var assignedMember = miembros.FirstOrDefault(member => member.Id == task.AssigneeId);
+                                                    <TaskCard Task="task" AssignedMember="assignedMember" IsDeleting="@(pendingDeleteId == task.Id)"
+                                                              IsBusy="@(isTaskOperationInFlight || !membersLoaded)"
+                                                              OnStatusChanged="(status) => CambiarEstadoAsync(task, status)"
+                                                              OnEdit="() => EditarTarea(task)"
+                                                              OnDelete="() => SolicitarEliminarAsync(task)" />
+                                                }
+                                            </div>
+                                        </section>
+                                    }
+                                </div>
+                            }
+                            <p class="task-board-notice">ⓘ Cambia el estado desde cada tarea. Usa el lápiz para editar o la papelera para eliminar.</p>
+                        </section>
+                    }
                 }
             </section>
         </div>
@@ -215,119 +383,141 @@
 </section>
 
 @code {
+    private static readonly (string Status, string Title, string CssClass)[] KanbanColumns =
+    [
+        ("todo", "Por hacer", "todo"),
+        ("in_progress", "En curso", "in-progress"),
+        ("done", "Hechas", "done")
+    ];
+
     private List<Team> equipos = [];
     private List<Profile> miembros = [];
-    private Guid? equipoSeleccionadoId;
-    private string nombreNuevoEquipo = string.Empty;
-    private string descripcionNuevoEquipo = string.Empty;
-    private string emailNuevoMiembro = string.Empty;
-    private string? errorMessage;
-    private string? memberValidationMessage;
-    private string? feedbackMessage;
-    private string? pendingTeamCreationConfirmation;
-    private string? teamsLoadError;
-    private string? memberLoadError;
+    private List<TeamTask> tareas = [];
+    private Guid? selectedTeamId;
+    private Guid? currentUserId;
+    private string? currentUserRole;
+    private string activeTab = "members";
+    private string? teamsError;
+    private string? membersError;
+    private string? tasksError;
+    private string? pageError;
+    private string? feedback;
+    private string memberEmail = "";
+    private string? memberInviteError;
+    private string? memberInviteFeedback;
     private bool isLoadingTeams = true;
+    private bool isLoadingCurrentUserRole = true;
+    private bool currentUserRoleLoaded;
     private bool isLoadingMembers;
-    private bool isCreatingTeam;
-    private bool isCheckingTeamCreationPermission = true;
-    private bool canCreateTeam;
-    private string? teamCreationPermissionError;
-    private readonly HashSet<Guid> addingMemberTeamIds = [];
-    private int memberLoadRequestId;
+    private bool membersLoaded;
+    private bool isLoadingTasks;
+    private bool isTaskFormOpen;
+    private bool isTaskOperationInFlight;
+    private bool isMemberInviteInFlight;
+    private string? currentUserRoleError;
+    private Guid? editingTaskId;
+    private Guid? editingOriginalAssigneeId;
+    private Guid? pendingDeleteId;
+    private string tituloTarea = "";
+    private string descripcionTarea = "";
+    private string responsableTarea = "";
+    private string fechaLimiteTarea = "";
+    private string estadoEdicion = "todo";
+    private int selectionRequestId;
 
-    private Team? EquipoSeleccionado =>
-        equipos.FirstOrDefault(equipo => equipo.Id == equipoSeleccionadoId);
+    private Team? EquipoSeleccionado => equipos.FirstOrDefault(team => team.Id == selectedTeamId);
+    private bool EsMiembroDelEquipoSeleccionado =>
+        EquipoSeleccionado is { } team &&
+        !isLoadingTeams &&
+        teamsError is null &&
+        equipos.Any(equipo => equipo.Id == team.Id);
+    private bool PuedeInvitarAlEquipo =>
+        EsMiembroDelEquipoSeleccionado &&
+        currentUserRoleLoaded &&
+        !isLoadingCurrentUserRole &&
+        currentUserRoleError is null &&
+        EsRolAutorizadoParaInvitar(currentUserRole);
 
     protected override async Task OnInitializedAsync()
     {
-        await CargarPermisosCrearEquipoAsync();
-        await CargarEquiposAsync();
-    }
-
-    private async Task CargarPermisosCrearEquipoAsync()
-    {
-        isCheckingTeamCreationPermission = true;
-        teamCreationPermissionError = null;
-        canCreateTeam = false;
-
         try
         {
-            canCreateTeam = await SupabaseService.PuedeCrearEquipoAsync();
-        }
-        catch (InvalidOperationException exception)
-        {
-            Logger.LogWarning(exception, "No hay una sesión válida para consultar los permisos de creación de equipos.");
-            Navigation.NavigateTo("/login");
-            teamCreationPermissionError = "Se requiere una sesión válida para verificar los permisos.";
-        }
-        catch (HttpRequestException exception)
-        {
-            Logger.LogError(exception, "No se pudieron consultar los permisos de creación de equipos.");
-            teamCreationPermissionError = "No se pudieron verificar tus permisos. No es posible crear equipos en este momento.";
-        }
-        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
-        {
-            Logger.LogError(exception, "Supabase devolvió un error al consultar los permisos de creación de equipos.");
-            teamCreationPermissionError = "No se pudieron verificar tus permisos. No es posible crear equipos en este momento.";
+            await SupabaseService.Initialization;
+            if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out var userId))
+            {
+                Navigation.NavigateTo("/login");
+                return;
+            }
+
+            currentUserId = userId;
+            await CargarRolUsuarioAsync();
+            await CargarEquiposAsync();
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Ocurrió un error inesperado al consultar los permisos de creación de equipos.");
-            teamCreationPermissionError = "No se pudieron verificar tus permisos. No es posible crear equipos en este momento.";
+            Logger.LogError(exception, "No se pudo inicializar la vista de equipos.");
+            teamsError = "No se pudieron cargar tus equipos. Comprueba tu conexión e inténtalo de nuevo.";
+            isLoadingTeams = false;
+        }
+    }
+
+    private async Task CargarRolUsuarioAsync()
+    {
+        isLoadingCurrentUserRole = true;
+        currentUserRoleLoaded = false;
+        currentUserRoleError = null;
+
+        try
+        {
+            currentUserRole = await SupabaseService.ObtenerRolUsuarioActualAsync();
+            currentUserRoleLoaded = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo consultar el rol del usuario actual.");
+            currentUserRoleError = "No se pudo verificar tu rol. Las opciones para invitar permanecerán ocultas.";
         }
         finally
         {
-            isCheckingTeamCreationPermission = false;
+            isLoadingCurrentUserRole = false;
         }
     }
 
     private async Task CargarEquiposAsync()
     {
         isLoadingTeams = true;
-        teamsLoadError = null;
+        teamsError = null;
+        pageError = null;
         try
         {
-            await SupabaseService.Initialization;
-            if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out _))
-            {
-                throw new InvalidOperationException("Se requiere una sesión autenticada para consultar los equipos.");
-            }
-
+            var requestedTeam = ReadRequestedTeamId();
             equipos = await SupabaseService.ObtenerEquiposDelUsuario();
-            pendingTeamCreationConfirmation = null;
-            if (equipos.Count > 0)
+            var teamId = requestedTeam is Guid id && equipos.Any(team => team.Id == id)
+                ? requestedTeam.Value
+                : equipos.FirstOrDefault()?.Id;
+
+            if (teamId is Guid selected)
             {
-                await SeleccionarEquipoAsync(equipos[0].Id);
+                await SeleccionarEquipoAsync(selected);
             }
             else
             {
-                equipoSeleccionadoId = null;
+                selectedTeamId = null;
                 miembros = [];
-                memberLoadError = null;
-                isLoadingMembers = false;
-                memberLoadRequestId++;
+                membersLoaded = false;
+                tareas = [];
+                UpdateTeamQuery(null);
             }
         }
         catch (InvalidOperationException exception)
         {
-            Logger.LogWarning(exception, "No hay una sesión válida para consultar los equipos.");
+            Logger.LogWarning(exception, "Se requiere una sesión válida para consultar equipos.");
             Navigation.NavigateTo("/login");
-        }
-        catch (HttpRequestException exception)
-        {
-            Logger.LogError(exception, "No se pudieron cargar los equipos desde Supabase.");
-            teamsLoadError = "No se pudieron cargar tus equipos. Comprueba tu conexión e inténtalo de nuevo.";
-        }
-        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
-        {
-            Logger.LogError(exception, "Supabase devolvió un error al consultar los equipos.");
-            teamsLoadError = "Ocurrió un error al consultar tus equipos.";
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Ocurrió un error inesperado al cargar los equipos.");
-            teamsLoadError = "No se pudieron cargar tus equipos. Inténtalo de nuevo más tarde.";
+            Logger.LogError(exception, "No se pudieron cargar los equipos.");
+            teamsError = "No se pudieron cargar tus equipos. Comprueba tu conexión e inténtalo de nuevo.";
         }
         finally
         {
@@ -335,275 +525,430 @@
         }
     }
 
-    private async Task SeleccionarEquipoAsync(Guid teamId)
+    private Guid? ReadRequestedTeamId()
     {
-        if (equipoSeleccionadoId != teamId)
-        {
-            errorMessage = null;
-            memberValidationMessage = null;
-            feedbackMessage = null;
-        }
-
-        equipoSeleccionadoId = teamId;
-        await CargarMiembrosAsync(teamId);
+        var query = QueryHelpers.ParseQuery(new Uri(Navigation.Uri).Query);
+        return query.TryGetValue("teamId", out var value) && Guid.TryParse(value.ToString(), out var teamId)
+            ? teamId
+            : null;
     }
 
-    private async Task CargarMiembrosAsync(Guid teamId)
+    private async Task SeleccionarEquipoAsync(Guid teamId)
     {
-        if (equipoSeleccionadoId != teamId)
+        if (isTaskOperationInFlight || isMemberInviteInFlight)
         {
             return;
         }
 
-        var requestId = ++memberLoadRequestId;
-        isLoadingMembers = true;
+        selectedTeamId = teamId;
+        UpdateTeamQuery(teamId);
+        activeTab = "members";
+        feedback = null;
+        pageError = null;
+        memberInviteError = null;
+        memberInviteFeedback = null;
+        memberEmail = "";
+        isTaskFormOpen = false;
+        pendingDeleteId = null;
+        var requestId = ++selectionRequestId;
         miembros = [];
-        memberLoadError = null;
+        membersLoaded = false;
+        tareas = [];
+        isLoadingMembers = true;
+        isLoadingTasks = true;
+        membersError = null;
+        tasksError = null;
+        await Task.WhenAll(CargarMiembrosAsync(teamId, requestId), CargarTareasAsync(teamId, requestId));
+    }
 
+    private void UpdateTeamQuery(Guid? teamId)
+    {
+        var uri = Navigation.GetUriWithQueryParameter("teamId", teamId?.ToString());
+        Navigation.NavigateTo(uri, replace: true);
+    }
+
+    private async Task CargarMiembrosAsync(Guid teamId, int? requestId = null)
+    {
+        var currentRequest = requestId ?? selectionRequestId;
+        if (selectedTeamId == teamId && selectionRequestId == currentRequest)
+        {
+            isLoadingMembers = true;
+            membersLoaded = false;
+            membersError = null;
+        }
         try
         {
-            var resultado = await SupabaseService.ObtenerMiembrosDelEquipo(teamId);
-            if (requestId == memberLoadRequestId && equipoSeleccionadoId == teamId)
+            var result = await SupabaseService.ObtenerMiembrosDelEquipo(teamId);
+            if (selectedTeamId == teamId && selectionRequestId == currentRequest)
             {
-                miembros = resultado;
-            }
-        }
-        catch (InvalidOperationException exception)
-        {
-            if (requestId == memberLoadRequestId && equipoSeleccionadoId == teamId)
-            {
-                Logger.LogWarning(exception, "No hay una sesión válida para consultar los miembros del equipo {TeamId}.", teamId);
-                Navigation.NavigateTo("/login");
-                memberLoadError = "Se requiere una sesión válida para consultar los miembros.";
-            }
-        }
-        catch (HttpRequestException exception)
-        {
-            if (requestId == memberLoadRequestId && equipoSeleccionadoId == teamId)
-            {
-                Logger.LogError(exception, "No se pudieron cargar los miembros del equipo {TeamId}.", teamId);
-                memberLoadError = "No se pudieron cargar los miembros. Inténtalo de nuevo.";
-            }
-        }
-        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
-        {
-            if (requestId == memberLoadRequestId && equipoSeleccionadoId == teamId)
-            {
-                Logger.LogError(exception, "Supabase devolvió un error al consultar los miembros del equipo {TeamId}.", teamId);
-                memberLoadError = "Ocurrió un error al consultar los miembros de este equipo.";
+                miembros = result;
+                membersLoaded = true;
             }
         }
         catch (Exception exception)
         {
-            if (requestId == memberLoadRequestId && equipoSeleccionadoId == teamId)
+            Logger.LogError(exception, "No se pudieron cargar los miembros del equipo {TeamId}.", teamId);
+            if (selectedTeamId == teamId && selectionRequestId == currentRequest)
             {
-                Logger.LogError(exception, "Ocurrió un error inesperado al cargar los miembros del equipo {TeamId}.", teamId);
-                memberLoadError = "No se pudieron cargar los miembros. Inténtalo de nuevo más tarde.";
+                membersError = "No se pudieron cargar los miembros. Inténtalo de nuevo.";
             }
         }
         finally
         {
-            if (requestId == memberLoadRequestId && equipoSeleccionadoId == teamId)
+            if (selectedTeamId == teamId && selectionRequestId == currentRequest)
             {
                 isLoadingMembers = false;
             }
         }
     }
 
-    private async Task ReintentarCargarMiembrosAsync()
+    private async Task CargarTareasAsync(Guid teamId, int? requestId = null)
     {
-        if (equipoSeleccionadoId is Guid teamId)
+        var currentRequest = requestId ?? selectionRequestId;
+        if (selectedTeamId == teamId && selectionRequestId == currentRequest)
         {
-            await CargarMiembrosAsync(teamId);
+            isLoadingTasks = true;
+            tasksError = null;
         }
-    }
-
-    private async Task CrearEquipoAsync()
-    {
-        if (isCheckingTeamCreationPermission ||
-            !string.IsNullOrWhiteSpace(teamCreationPermissionError) ||
-            !canCreateTeam)
-        {
-            return;
-        }
-
-        var nombre = nombreNuevoEquipo.Trim();
-        if (isCreatingTeam || string.IsNullOrWhiteSpace(nombre))
-        {
-            return;
-        }
-
-        isCreatingTeam = true;
-        errorMessage = null;
-        memberValidationMessage = null;
-        feedbackMessage = null;
         try
         {
-            Team nuevoEquipo;
-            try
+            var result = await SupabaseService.ObtenerTareas(teamId);
+            if (selectedTeamId == teamId && selectionRequestId == currentRequest)
             {
-                nuevoEquipo = await SupabaseService.CrearEquipo(
-                    nombre,
-                    string.IsNullOrWhiteSpace(descripcionNuevoEquipo) ? null : descripcionNuevoEquipo.Trim());
-            }
-            catch (InvalidOperationException exception)
-            {
-                Logger.LogWarning(exception, "No hay una sesión válida para crear un equipo.");
-                Navigation.NavigateTo("/login");
-                return;
-            }
-            catch (UnauthorizedAccessException exception)
-            {
-                Logger.LogWarning(exception, "Se rechazó la creación de un equipo por falta de permisos.");
-                canCreateTeam = false;
-                teamCreationPermissionError = null;
-                return;
-            }
-            catch (HttpRequestException exception)
-            {
-                Logger.LogError(exception, "No se pudo crear un equipo desde Supabase.");
-                errorMessage = "No se pudo crear el equipo. Comprueba tu conexión e inténtalo de nuevo.";
-                return;
-            }
-            catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
-            {
-                Logger.LogError(exception, "Supabase devolvió un error al crear un equipo.");
-                errorMessage = "Ocurrió un error al crear el equipo.";
-                return;
-            }
-            catch (Exception exception)
-            {
-                Logger.LogError(exception, "Ocurrió un error inesperado al crear un equipo.");
-                errorMessage = "No se pudo crear el equipo. Inténtalo de nuevo más tarde.";
-                return;
-            }
-
-            nombreNuevoEquipo = string.Empty;
-            descripcionNuevoEquipo = string.Empty;
-            pendingTeamCreationConfirmation =
-                $"El equipo «{nuevoEquipo.Name}» se creó correctamente. Solo falló la actualización de la lista; usa «Reintentar cargar equipos» para volver a intentarlo.";
-
-            try
-            {
-                await CargarEquiposAsync();
-            }
-            catch (Exception exception)
-            {
-                Logger.LogError(exception, "Se creó un equipo, pero no se pudo actualizar la lista.");
-                teamsLoadError = "No se pudieron actualizar tus equipos. Inténtalo de nuevo.";
-            }
-
-            if (!string.IsNullOrWhiteSpace(teamsLoadError))
-            {
-                return;
-            }
-
-            await SeleccionarEquipoAsync(nuevoEquipo.Id);
-            feedbackMessage = $"Se creó el equipo «{nuevoEquipo.Name}».";
-        }
-        finally
-        {
-            isCreatingTeam = false;
-        }
-    }
-
-    private async Task AgregarMiembroAsync()
-    {
-        if (EquipoSeleccionado is not { } equipo)
-        {
-            return;
-        }
-
-        var email = emailNuevoMiembro.Trim();
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return;
-        }
-
-        if (!addingMemberTeamIds.Add(equipo.Id))
-        {
-            return;
-        }
-
-        errorMessage = null;
-        memberValidationMessage = null;
-        feedbackMessage = null;
-        try
-        {
-            var resultado = await SupabaseService.AgregarMiembro(equipo.Id, email);
-            if (equipoSeleccionadoId != equipo.Id)
-            {
-                return;
-            }
-
-            if (resultado == ResultadoAgregarMiembro.CuentaNoEncontrada)
-            {
-                memberValidationMessage = $"No existe una cuenta con el correo «{email}».";
-                return;
-            }
-
-            emailNuevoMiembro = string.Empty;
-            await CargarMiembrosAsync(equipo.Id);
-            if (equipoSeleccionadoId == equipo.Id)
-            {
-                feedbackMessage = resultado == ResultadoAgregarMiembro.YaEsMiembro
-                    ? $"{email} ya es miembro de este equipo."
-                    : $"Se agregó a {email} al equipo.";
-            }
-        }
-        catch (InvalidOperationException exception)
-        {
-            Logger.LogWarning(exception, "No hay una sesión válida para agregar miembros al equipo {TeamId}.", equipo.Id);
-            if (equipoSeleccionadoId == equipo.Id)
-            {
-                Navigation.NavigateTo("/login");
-            }
-        }
-        catch (HttpRequestException exception)
-        {
-            Logger.LogError(exception, "No se pudo agregar un miembro al equipo {TeamId}.", equipo.Id);
-            if (equipoSeleccionadoId == equipo.Id)
-            {
-                errorMessage = "No se pudo agregar a la persona. Comprueba tu conexión e inténtalo de nuevo.";
-            }
-        }
-        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
-        {
-            Logger.LogError(exception, "Supabase rechazó agregar un miembro al equipo {TeamId}.", equipo.Id);
-            if (equipoSeleccionadoId == equipo.Id)
-            {
-                errorMessage = "No se pudo agregar a la persona. Puede que no tengas permisos para invitar a miembros.";
+                tareas = result;
             }
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Ocurrió un error inesperado al agregar un miembro al equipo {TeamId}.", equipo.Id);
-            if (equipoSeleccionadoId == equipo.Id)
+            Logger.LogError(exception, "No se pudieron cargar las tareas del equipo {TeamId}.", teamId);
+            if (selectedTeamId == teamId && selectionRequestId == currentRequest)
             {
-                errorMessage = "No se pudo agregar a la persona. Inténtalo de nuevo más tarde.";
+                tasksError = "No se pudieron cargar las tareas. Comprueba tu conexión e inténtalo de nuevo.";
             }
         }
         finally
         {
-            addingMemberTeamIds.Remove(equipo.Id);
+            if (selectedTeamId == teamId && selectionRequestId == currentRequest)
+            {
+                isLoadingTasks = false;
+            }
         }
     }
 
-    private bool IsAddingMember(Guid teamId) => addingMemberTeamIds.Contains(teamId);
+    private void AbrirNuevaTarea()
+    {
+        if (isTaskOperationInFlight)
+        {
+            return;
+        }
+
+        ResetTaskForm();
+        isTaskFormOpen = true;
+        pageError = null;
+    }
+
+    private void EditarTarea(TeamTask task)
+    {
+        if (!membersLoaded || isTaskOperationInFlight || selectedTeamId != task.TeamId)
+        {
+            return;
+        }
+
+        editingTaskId = task.Id;
+        editingOriginalAssigneeId = task.AssigneeId;
+        tituloTarea = task.Title;
+        descripcionTarea = task.Description ?? "";
+        responsableTarea = task.AssigneeId?.ToString() ?? "";
+        fechaLimiteTarea = task.DueAt?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) ?? "";
+        estadoEdicion = task.Status;
+        isTaskFormOpen = true;
+        pageError = null;
+    }
+
+    private async Task GuardarTareaAsync()
+    {
+        if (EquipoSeleccionado is not { } team || string.IsNullOrWhiteSpace(tituloTarea) ||
+            !membersLoaded || isLoadingMembers || membersError is not null || isTaskOperationInFlight)
+        {
+            return;
+        }
+
+        var teamId = team.Id;
+        var requestId = selectionRequestId;
+        Guid? assigneeId;
+        if (string.IsNullOrWhiteSpace(responsableTarea))
+        {
+            assigneeId = null;
+        }
+        else if (Guid.TryParse(responsableTarea, out var parsedId) &&
+                 (miembros.Any(member => member.Id == parsedId) ||
+                  (editingTaskId is not null && editingOriginalAssigneeId == parsedId)))
+        {
+            assigneeId = parsedId;
+        }
+        else
+        {
+            pageError = "El responsable seleccionado no pertenece a los miembros cargados. No se guardaron los cambios.";
+            return;
+        }
+
+        isTaskOperationInFlight = true;
+        pageError = null;
+        feedback = null;
+        DateTimeOffset? dueAt = DateOnly.TryParse(fechaLimiteTarea, CultureInfo.InvariantCulture, out var dueDate)
+            ? new DateTimeOffset(dueDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero)
+            : null;
+
+        try
+        {
+            if (editingTaskId is Guid taskId)
+            {
+                await SupabaseService.ActualizarTarea(taskId, tituloTarea.Trim(),
+                    string.IsNullOrWhiteSpace(descripcionTarea) ? null : descripcionTarea.Trim(),
+                    assigneeId, dueAt);
+                if (selectedTeamId == teamId && selectionRequestId == requestId)
+                {
+                    var task = tareas.FirstOrDefault(item => item.Id == taskId && item.TeamId == teamId);
+                    if (task is not null)
+                    {
+                        task.Title = tituloTarea.Trim();
+                        task.Description = string.IsNullOrWhiteSpace(descripcionTarea) ? null : descripcionTarea.Trim();
+                        task.AssigneeId = assigneeId;
+                        task.DueAt = dueAt;
+                    }
+                    feedback = "Se guardaron los cambios de la tarea.";
+                    CerrarFormularioTrasGuardar();
+                }
+            }
+            else
+            {
+                var created = await SupabaseService.CrearTarea(teamId, tituloTarea.Trim(),
+                    string.IsNullOrWhiteSpace(descripcionTarea) ? null : descripcionTarea.Trim(), assigneeId, dueAt);
+                if (selectedTeamId == teamId && selectionRequestId == requestId)
+                {
+                    tareas.Add(created);
+                    feedback = "Se creó la tarea.";
+                    CerrarFormularioTrasGuardar();
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo guardar la tarea del equipo {TeamId}.", teamId);
+            if (selectedTeamId == teamId && selectionRequestId == requestId)
+            {
+                pageError = "No se pudo guardar la tarea. Comprueba tus permisos y vuelve a intentarlo.";
+            }
+        }
+        finally
+        {
+            isTaskOperationInFlight = false;
+        }
+    }
+
+    private async Task CambiarEstadoAsync(TeamTask task, string status)
+    {
+        if (status is not ("todo" or "in_progress" or "done") || task.Status == status ||
+            isTaskOperationInFlight || !membersLoaded || EquipoSeleccionado?.Id != task.TeamId)
+        {
+            return;
+        }
+
+        var teamId = task.TeamId;
+        var requestId = selectionRequestId;
+        var previousStatus = task.Status;
+        isTaskOperationInFlight = true;
+        task.Status = status;
+        pageError = null;
+        StateHasChanged();
+        try
+        {
+            await SupabaseService.ActualizarEstadoTarea(task.Id, status);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo cambiar el estado de la tarea {TaskId}.", task.Id);
+            if (selectedTeamId == teamId && selectionRequestId == requestId)
+            {
+                var currentTask = tareas.FirstOrDefault(item => item.Id == task.Id && item.TeamId == teamId);
+                if (currentTask is not null)
+                {
+                    currentTask.Status = previousStatus;
+                }
+                pageError = "No se pudo actualizar el estado. Se restauró la tarea a su columna anterior.";
+            }
+        }
+        finally
+        {
+            isTaskOperationInFlight = false;
+        }
+    }
+
+    private async Task SolicitarEliminarAsync(TeamTask task)
+    {
+        if (isTaskOperationInFlight || !membersLoaded || EquipoSeleccionado?.Id != task.TeamId)
+        {
+            return;
+        }
+
+        pageError = null;
+        if (pendingDeleteId == task.Id)
+        {
+            await EliminarTareaAsync(task);
+        }
+        else
+        {
+            pendingDeleteId = task.Id;
+        }
+    }
+
+    private async Task EliminarTareaAsync(TeamTask task)
+    {
+        var teamId = task.TeamId;
+        var requestId = selectionRequestId;
+        isTaskOperationInFlight = true;
+        try
+        {
+            await SupabaseService.EliminarTarea(task.Id);
+            if (selectedTeamId == teamId && selectionRequestId == requestId)
+            {
+                tareas.RemoveAll(item => item.Id == task.Id && item.TeamId == teamId);
+                feedback = "Se eliminó la tarea.";
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo eliminar la tarea {TaskId}.", task.Id);
+            if (selectedTeamId == teamId && selectionRequestId == requestId)
+            {
+                pageError = "No se pudo eliminar la tarea. Comprueba tus permisos e inténtalo de nuevo.";
+            }
+        }
+        finally
+        {
+            pendingDeleteId = null;
+            isTaskOperationInFlight = false;
+        }
+    }
+
+    private void CerrarFormulario()
+    {
+        if (isTaskOperationInFlight)
+        {
+            return;
+        }
+
+        isTaskFormOpen = false;
+        ResetTaskForm();
+    }
+
+    private void CerrarFormularioTrasGuardar()
+    {
+        isTaskFormOpen = false;
+        ResetTaskForm();
+    }
+
+    private void ActualizarFechaLimite(ChangeEventArgs args)
+    {
+        fechaLimiteTarea = args.Value?.ToString() ?? "";
+    }
+
+    private void ResetTaskForm()
+    {
+        editingTaskId = null;
+        editingOriginalAssigneeId = null;
+        tituloTarea = "";
+        descripcionTarea = "";
+        responsableTarea = "";
+        fechaLimiteTarea = "";
+        estadoEdicion = "todo";
+    }
+
+    private async Task AgregarMiembroAsync()
+    {
+        if (!PuedeInvitarAlEquipo ||
+            EquipoSeleccionado is not { } team ||
+            string.IsNullOrWhiteSpace(memberEmail) ||
+            isMemberInviteInFlight)
+        {
+            return;
+        }
+
+        var teamId = team.Id;
+        var requestId = selectionRequestId;
+        isMemberInviteInFlight = true;
+        memberInviteError = null;
+        memberInviteFeedback = null;
+        try
+        {
+            var result = await SupabaseService.AgregarMiembro(teamId, memberEmail.Trim());
+            if (selectedTeamId != teamId || selectionRequestId != requestId)
+            {
+                return;
+            }
+
+            switch (result)
+            {
+                case ResultadoAgregarMiembro.Agregado:
+                    memberEmail = "";
+                    memberInviteFeedback = "Se agregó el miembro al equipo.";
+                    await CargarMiembrosAsync(teamId, requestId);
+                    break;
+                case ResultadoAgregarMiembro.CuentaNoEncontrada:
+                    memberInviteError = "No se encontró una cuenta con ese correo electrónico.";
+                    break;
+                case ResultadoAgregarMiembro.YaEsMiembro:
+                    memberInviteError = "Esa cuenta ya pertenece al equipo.";
+                    break;
+            }
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogWarning(exception, "Supabase rechazó agregar un miembro al equipo {TeamId}.", teamId);
+            if (selectedTeamId == teamId && selectionRequestId == requestId)
+            {
+                memberInviteError = "Supabase rechazó la solicitud. Puede deberse a la política RLS; verifica los permisos del equipo y vuelve a intentarlo.";
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "No se pudo agregar un miembro al equipo {TeamId}.", teamId);
+            if (selectedTeamId == teamId && selectionRequestId == requestId)
+            {
+                memberInviteError = "No se pudo agregar el miembro. Comprueba el correo, tus permisos y vuelve a intentarlo.";
+            }
+        }
+        finally
+        {
+            isMemberInviteInFlight = false;
+        }
+    }
+
+    private static string EtiquetaEstado(string status) => status switch
+    {
+        "in_progress" => "En curso (in_progress)",
+        "done" => "Hechas (done)",
+        _ => "Por hacer (todo)"
+    };
+
+    private static bool EsRolAutorizadoParaInvitar(string? role) =>
+        string.Equals(role?.Trim(), "team_manager", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(role?.Trim(), "project_manager", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
 
     private static string NombreMiembro(Profile profile) =>
         string.IsNullOrWhiteSpace(profile.FullName) ? profile.Email : profile.FullName;
 
-    private static string Iniciales(string? nombre)
+    private static string Iniciales(string? value)
     {
-        if (string.IsNullOrWhiteSpace(nombre))
+        if (string.IsNullOrWhiteSpace(value))
         {
             return "?";
         }
 
-        var partes = nombre.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return partes.Length > 1
-            ? string.Concat(char.ToUpperInvariant(partes[0][0]), char.ToUpperInvariant(partes[^1][0]))
-            : nombre[..1].ToUpperInvariant();
+        var parts = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 1
+            ? string.Concat(char.ToUpperInvariant(parts[0][0]), char.ToUpperInvariant(parts[^1][0]))
+            : value[..1].ToUpperInvariant();
     }
 }

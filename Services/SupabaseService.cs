@@ -165,6 +165,19 @@ public class SupabaseService
         return await PuedeCrearEquipoAsync(userId);
     }
 
+    public async Task<string?> ObtenerRolUsuarioActualAsync()
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("consultar el rol del usuario actual");
+
+        var profileResponse = await Client
+            .From<Profile>()
+            .Filter("id", Operator.Equals, userId.ToString())
+            .Get();
+
+        return profileResponse.Models.FirstOrDefault()?.Role;
+    }
+
     private async Task<bool> PuedeCrearEquipoAsync(Guid userId)
     {
         var profileResponse = await Client
@@ -287,6 +300,42 @@ public class SupabaseService
             .Filter("id", Operator.Equals, taskId.ToString())
             .Set(task => task.Status, estado)
             .Update();
+    }
+
+    public async Task ActualizarTarea(
+        Guid taskId,
+        string titulo,
+        string? descripcion,
+        Guid? responsableId,
+        DateTimeOffset? venceEn)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("actualizar tareas");
+
+        if (string.IsNullOrWhiteSpace(titulo))
+        {
+            throw new ArgumentException("El título de la tarea es obligatorio.", nameof(titulo));
+        }
+
+        await Client
+            .From<TeamTask>()
+            .Filter("id", Operator.Equals, taskId.ToString())
+            .Set(task => task.Title, titulo)
+            .Set(task => task.Description!, descripcion!)
+            .Set(task => task.AssigneeId!, responsableId!)
+            .Set(task => task.DueAt!, venceEn!)
+            .Update();
+    }
+
+    public async Task EliminarTarea(Guid taskId)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("eliminar tareas");
+
+        await Client
+            .From<TeamTask>()
+            .Filter("id", Operator.Equals, taskId.ToString())
+            .Delete();
     }
 
     public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerBandejaEntradaAsync() =>
