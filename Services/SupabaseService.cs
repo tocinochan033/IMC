@@ -134,7 +134,7 @@ public class SupabaseService
         if (!await PuedeCrearEquipoAsync(userId))
         {
             throw new UnauthorizedAccessException(
-                "Solo los perfiles con rol project_manager o admin pueden crear equipos.");
+                "Solo los perfiles con rol project_manager o team_manager pueden crear equipos.");
         }
 
         if (string.IsNullOrWhiteSpace(nombre))
@@ -186,8 +186,8 @@ public class SupabaseService
             .Get();
 
         var role = profileResponse.Models.FirstOrDefault()?.Role;
-        return string.Equals(role?.Trim(), "project_manager", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
+        return string.Equals(role, "project_manager", StringComparison.Ordinal) ||
+               string.Equals(role, "team_manager", StringComparison.Ordinal);
     }
 
     public async Task<ResultadoAgregarMiembro> AgregarMiembro(Guid teamId, string email)

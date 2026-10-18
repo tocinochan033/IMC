@@ -43,9 +43,46 @@
 
 .teams-layout {
     display: grid;
-    grid-template-columns: minmax(225px, 270px) minmax(0, 1fr);
-    gap: 24px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
     align-items: start;
+}
+
+.team-selection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.team-selection label {
+    flex: 0 0 auto;
+    color: #68737D;
+    font-size: .8125rem;
+    font-weight: 500;
+}
+
+.team-selection select {
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 34px 7px 10px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+    color: #26323C;
+    font: inherit;
+    font-size: .8125rem;
+}
+
+.team-selection select:focus {
+    border-color: #2C5F8A;
+    outline: 2px solid rgb(44 95 138 / 12%);
+}
+
+.team-selection select:disabled {
+    background: #F3F5F7;
+    color: #8A949D;
+    cursor: not-allowed;
 }
 
 .teams-sidebar,
@@ -784,6 +821,16 @@
     .teams-layout {
         grid-template-columns: minmax(0, 1fr);
         gap: 14px;
+    }
+
+    .team-selection {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .team-selection select {
+        width: 100%;
     }
 
     .tasks-section {

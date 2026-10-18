@@ -7,7 +7,6 @@ namespace IMC_.Models;
 public class UserLabel : BaseModel
 {
     [PrimaryKey("id", false)]
-    [Column("id")]
     public Guid Id { get; set; }
 
     [Column("user_id")]

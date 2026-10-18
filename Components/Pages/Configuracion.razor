@@ -21,15 +21,7 @@
         <p class="settings-error" role="alert">@errorMessage</p>
         <button type="button" class="settings-primary" @onclick="CargarPermisosAsync">Reintentar</button>
     }
-    else if (!canCreateTeam)
-    {
-        <section class="settings-card">
-            <h2>Creación de equipos</h2>
-            <p>Esta opción está disponible únicamente para los perfiles con rol project_manager o admin.</p>
-            <a href="/equipos">Volver a equipos</a>
-        </section>
-    }
-    else
+    else if (canCreateTeam)
     {
         <section class="settings-card" aria-labelledby="create-team-title">
             <div class="settings-card-heading">

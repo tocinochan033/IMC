@@ -41,44 +41,20 @@
     else
     {
         <div class="teams-layout">
-            <aside class="teams-sidebar" aria-label="Tus equipos">
-                <div class="sidebar-heading">
-                    <h2>Mis equipos</h2>
-                    <span class="teams-count">@equipos.Count @(equipos.Count == 1 ? "equipo" : "equipos")</span>
-                </div>
-                @if (equipos.Count == 0)
-                {
-                    <p class="teams-empty-list">Todavía no tienes equipos.</p>
-                }
-                else
-                {
-                    <ul class="team-list">
+            @if (equipos.Count > 0)
+            {
+                <div class="team-selection">
+                    <label for="selected-team">Equipo seleccionado</label>
+                    <select id="selected-team" value="@(selectedTeamId?.ToString() ?? string.Empty)"
+                            disabled="@(isTaskOperationInFlight || isMemberInviteInFlight)"
+                            @onchange="CambiarEquipoSeleccionado">
                         @foreach (var team in equipos)
                         {
-                            var selected = selectedTeamId == team.Id;
-                            <li>
-                                <button type="button" class="team-option @(selected ? "selected" : "")"
-                                        aria-current="@(selected ? "true" : null)"
-                                        disabled="@(isTaskOperationInFlight || isMemberInviteInFlight)"
-                                        @onclick="() => SeleccionarEquipoAsync(team.Id)">
-                                    <span class="team-avatar" aria-hidden="true">@Iniciales(team.Name)</span>
-                                    <span class="team-option-copy">
-                                        <span class="team-option-name">@team.Name</span>
-                                        <span class="team-option-description">
-                                            @(string.IsNullOrWhiteSpace(team.Description) ? "Sin descripción" : team.Description)
-                                        </span>
-                                    </span>
-                                    <span class="team-chevron" aria-hidden="true">›</span>
-                                </button>
-                            </li>
+                            <option value="@team.Id">@team.Name</option>
                         }
-                    </ul>
-                }
-                <p class="team-permission-notice">
-                    <span aria-hidden="true">ⓘ</span>
-                    Como miembro, puedes crear, editar y eliminar tareas del equipo.
-                </p>
-            </aside>
+                    </select>
+                </div>
+            }
 
             <section class="team-detail" aria-label="Detalles del equipo seleccionado">
                 @if (EquipoSeleccionado is null)
@@ -559,6 +535,15 @@
         membersError = null;
         tasksError = null;
         await Task.WhenAll(CargarMiembrosAsync(teamId, requestId), CargarTareasAsync(teamId, requestId));
+    }
+
+    private async Task CambiarEquipoSeleccionado(ChangeEventArgs args)
+    {
+        if (Guid.TryParse(args.Value?.ToString(), out var teamId) &&
+            equipos.Any(team => team.Id == teamId))
+        {
+            await SeleccionarEquipoAsync(teamId);
+        }
     }
 
     private void UpdateTeamQuery(Guid? teamId)
