@@ -1,0 +1,90 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "project-manager",
+  "agents": {
+    "project-manager": {
+      "description": "Orchestrates tasks, delegates work, tracks progress and validates results",
+      "mode": "primary",
+      "model": "opencode/cat-jam-free#high",
+      "system": "You are the Project Manager. You own planning and coordination, not implementation details. Break work into small, verifiable tasks. Prefer delegating to the specialized subagents (code-reviewer, frontend-developer, backend-developer, database-agent, qa-tester). Before delegating, restate the goal and acceptance criteria. When working with code you do not know, delegate reading/exploration. Review subagent results and decide whether work is done or needs changes. Never silently ship; require verification.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "subagent", "resource": "code-reviewer", "effect": "allow" },
+        { "action": "subagent", "resource": "frontend-developer", "effect": "allow" },
+        { "action": "subagent", "resource": "backend-developer", "effect": "allow" },
+        { "action": "subagent", "resource": "database-agent", "effect": "allow" },
+        { "action": "subagent", "resource": "qa-tester", "effect": "allow" }
+      ]
+    },
+    "code-reviewer": {
+      "description": "Reviews changes for correctness and regressions",
+      "mode": "subagent",
+      "model": "opencode/mimo-v2.6-flash-free",
+      "system": "You are the Code Reviewer. Analyze the provided changes for correctness, security, performance, and maintainability. Read the code and explain findings by severity, with concrete file and line references. Propose minimal fixes. Do not edit files yourself. When context is missing, ask targeted questions.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "*", "effect": "deny" },
+        { "action": "shell", "resource": "*", "effect": "deny" }
+      ]
+    },
+    "frontend-developer": {
+      "description": "Builds and fixes frontend code (components, styles, interactions)",
+      "mode": "subagent",
+      "model": "opencode/mimo-v2.6-flash-free",
+      "system": "You are the Frontend Developer. Implement UI work with a focus on accessibility, performance and maintainability. Use existing design patterns and components first. Verify changes by running lint/build/tests. Keep changes scoped.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "npm run dev", "effect": "allow" },
+        { "action": "shell", "resource": "npm run build", "effect": "allow" },
+        { "action": "shell", "resource": "npm run lint", "effect": "allow" },
+        { "action": "shell", "resource": "npm run test", "effect": "allow" }
+      ]
+    },
+    "backend-developer": {
+      "description": "Builds and fixes backend code (APIs, DB, business logic)",
+      "mode": "subagent",
+      "model": "opencode/exo-free#high",
+      "system": "You are the Backend Developer. Implement APIs, data models, and business logic with focus on correctness, security, and performance. Use existing patterns and validation first. Verify changes by running lint/build/tests. Keep changes scoped.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "*", "effect": "allow" },
+        { "action": "shell", "resource": "npm run dev", "effect": "allow" },
+        { "action": "shell", "resource": "npm run build", "effect": "allow" },
+        { "action": "shell", "resource": "npm run lint", "effect": "allow" },
+        { "action": "shell", "resource": "npm run test", "effect": "allow" }
+      ]
+    },
+    "database-agent": {
+      "description": "Administra la base de datos del proyecto usando Supabase CLI — crea tablas, ejecuta migraciones, y consulta el estado del esquema.",
+      "mode": "subagent",
+      "model": "opencode/longcat-2.5-preview-free",
+      "system": "Eres el Database Agent de este proyecto.\n\nANTES de generar cualquier SQL, SIEMPRE consulta primero el esquema real existente (tablas, columnas, políticas, versión de Postgres) para no generar código a ciegas.\n\nCuando finalices cualquier consulta o modificación en la base de datos, debes explicarme qué hiciste y por qué. Muéstrame el flujo de cómo trabajaría con esa modificación.\n\nNUNCA ejecutes `supabase db push` ni ningún comando que modifique datos sin antes mostrarme el SQL completo y esperar mi confirmación explícita (\"sí\", \"aplícalo\", \"adelante\").\n\nTu flujo correcto es:\n1. Consultar el esquema real.\n2. Generar la migración SQL basada en ese contexto real.\n3. Mostrarme el SQL y preguntar si lo aplico.\n4. Solo tras mi confirmación, ejecutar `supabase db push`.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "supabase/migrations/**", "effect": "allow" },
+        { "action": "edit", "resource": "**/migrations/**", "effect": "allow" },
+        { "action": "edit", "resource": "*", "effect": "ask" },
+        { "action": "shell", "resource": "supabase status*", "effect": "allow" },
+        { "action": "shell", "resource": "supabase db diff*", "effect": "allow" },
+        { "action": "shell", "resource": "supabase migration list*", "effect": "allow" },
+        { "action": "shell", "resource": "supabase db push*", "effect": "ask" },
+        { "action": "shell", "resource": "supabase *", "effect": "ask" },
+        { "action": "shell", "resource": "*", "effect": "ask" }
+      ]
+    },
+    "qa-tester": {
+      "description": "Runs, writes and verifies tests for application behavior",
+      "mode": "subagent",
+      "model": "opencode/step-5-preview-free#medium",
+      "system": "You are the QA Tester. Design test cases from requirements first, then run them. Reproduce bugs with minimal reproduction before fixing test side. Prefer existing test tooling. Summarize pass/fail with details. Never mark tests as pass if they did not actually run.",
+      "permissions": [
+        { "action": "subagent", "resource": "*", "effect": "deny" },
+        { "action": "edit", "resource": "**/*.test.*", "effect": "allow" },
+        { "action": "edit", "resource": "**/tests/**", "effect": "allow" },
+        { "action": "edit", "resource": "*", "effect": "ask" },
+        { "action": "shell", "resource": "*", "effect": "ask" }
+      ]
+    }
+  }
+}

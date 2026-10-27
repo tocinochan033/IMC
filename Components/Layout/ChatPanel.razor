@@ -1,0 +1,1460 @@
+@using IMC_.Models
+@using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage
+@inject SupabaseService SupabaseService
+@inject ChatService ChatService
+@inject ProtectedSessionStorage Storage
+@inject ILogger<ChatPanel> Logger
+@implements IDisposable
+
+@if (autenticado)
+{
+    <button type="button" class="chat-fab @(abierto ? "activo" : string.Empty)"
+            style="@($"right: {(abierto ? panelWidth + 16 : 24)}px")"
+            aria-label="@(abierto ? "Cerrar chat" : "Abrir chat")"
+            aria-expanded="@(abierto ? "true" : "false")"
+            aria-controls="chat-panel"
+            title="Chat interno"
+            @ref="fabRef"
+            @onclick="AlternarPanelAsync">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+        </svg>
+        @if (!abierto && noLeidosTotales > 0)
+        {
+            <span class="chat-fab-badge">@noLeidosTotales</span>
+        }
+    </button>
+
+    <aside id="chat-panel" class="chat-panel @(abierto ? "abierto" : string.Empty)"
+           style="@($"width: {panelWidth}px")"
+           aria-label="Chat interno"
+           aria-hidden="@(abierto ? "false" : "true")"
+           inert="@(!abierto)"
+           @onkeydown="ManejarTecladoPanelAsync">
+        <header class="chat-header">
+            <span class="chat-header-title">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M21 12a8 8 0 0 1-8 8H5l-2 2V12a8 8 0 0 1 8-8h2a8 8 0 0 1 8 8Z" />
+                </svg>
+                <span>Chat</span>
+            </span>
+            <button type="button" class="chat-icon-button" aria-label="Cerrar chat" @onclick="CerrarPanelAsync">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
+                </svg>
+            </button>
+        </header>
+
+        <div class="chat-body @ClaseCuerpo">
+            <section class="chat-contacts" aria-label="Conversaciones">
+                <label class="chat-search" for="chat-buscar">
+                    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7" />
+                        <path d="m16 16 4 4" />
+                    </svg>
+                    <span class="visually-hidden">Buscar contacto o grupo</span>
+                    <input id="chat-buscar" type="search" placeholder="Buscar contacto o grupo"
+                           value="@filtro" @ref="busquedaRef"
+                           @oninput="AplicarFiltro" />
+                </label>
+
+                <div class="chat-contact-list">
+                    @if (cargando)
+                    {
+                        <p class="chat-empty">Cargando contactos...</p>
+                    }
+                    else
+                    {
+                        @* Se evalúa UNA vez por render (la caché evita recalcular la lista
+                           completa 2 veces); el resto del markup usa esa variable local. *@
+                        var conversaciones = ConversacionesFiltradas;
+
+                        if (conversaciones.Count == 0)
+                        {
+                            <p class="chat-empty">@(string.IsNullOrWhiteSpace(filtro) ? "No hay contactos disponibles." : "Sin coincidencias.")</p>
+                        }
+                        else
+                        {
+                            @foreach (var conversacion in conversaciones)
+                            {
+                                <button type="button"
+                                        @key="conversacion.Conversacion.Id"
+                                        class="chat-contact @(conversacionSeleccionada?.Id == conversacion.Conversacion.Id ? "activo" : string.Empty)"
+                                        @onclick="() => SeleccionarConversacionAsync(conversacion.Conversacion)">
+                                    <span class="chat-avatar">@Iniciales(conversacion.Conversacion.Nombre)</span>
+                                    <span class="chat-contact-info">
+                                        <span class="chat-contact-name">
+                                            @conversacion.Conversacion.Nombre
+                                            @* Marcador visual para distinguir el grupo del equipo
+                                               de los contactos 1:1 en la misma lista. *@
+                                            @if (conversacion.Conversacion.EsGrupo)
+                                            {
+                                                <span class="chat-group-tag">Grupo</span>
+                                            }
+                                        </span>
+                                        <span class="chat-contact-preview">
+                                            @(conversacion.UltimoMensaje is null
+                                                ? "Sin mensajes aún"
+                                                : Prefijo(conversacion.UltimoMensaje) + conversacion.UltimoMensaje.Body)
+                                        </span>
+                                    </span>
+                                    <span class="chat-contact-meta">
+                                        @if (conversacion.UltimoMensaje is not null)
+                                        {
+                                            <span class="chat-contact-time">@HoraConversacion(conversacion.UltimoMensaje)</span>
+                                        }
+                                        @if (conversacion.NoLeidos > 0)
+                                        {
+                                            <span class="chat-badge">@conversacion.NoLeidos</span>
+                                        }
+                                    </span>
+                                </button>
+                            }
+                        }
+                    }
+                </div>
+            </section>
+
+            <section class="chat-thread" aria-label="Mensajes">
+                @if (conversacionSeleccionada is null)
+                {
+                    <p class="chat-empty chat-thread-empty">Selecciona una conversación para escribir.</p>
+                }
+                else
+                {
+                    <header class="chat-thread-header">
+                        @if (modoCompacto)
+                        {
+                            <button type="button" class="chat-back" aria-label="Volver a conversaciones"
+                                    @ref="volverRef" @onclick="VolverAConversaciones">
+                                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                    <path d="M19 12H5" />
+                                    <path d="m12 19-7-7 7-7" />
+                                </svg>
+                            </button>
+                        }
+                        <span class="chat-avatar">@Iniciales(conversacionSeleccionada.Nombre)</span>
+                        <span class="chat-thread-name">
+                            @conversacionSeleccionada.Nombre
+                            @if (conversacionSeleccionada.EsGrupo)
+                            {
+                                <span class="chat-group-tag">Grupo</span>
+                            }
+                        </span>
+                    </header>
+
+                    <div class="chat-messages" @key="conversacionSeleccionada.Id">
+                        @foreach (var grupo in MensajesPorDia)
+                        {
+                            @* La píldora se emite DESPUÉS de sus mensajes: el contenedor es
+                               column-reverse, así que el primer hijo DOM queda más abajo y la
+                               píldora acabaría por debajo del grupo. *@
+                            @foreach (var mensaje in grupo)
+                            {
+                                var propia = mensaje.SenderId == userId;
+                                // En grupo, y solo en las burbujas ajenas, se muestra quién escribió:
+                                // en un mismo hilo pueden hablar varias personas y el color no basta.
+                                var mostrarRemitente = !propia && conversacionSeleccionada.EsGrupo;
+                                <div class="chat-bubble @(propia ? "propia" : "ajena")">
+                                    @if (mostrarRemitente)
+                                    {
+                                        <span class="chat-bubble-sender">@NombreDeRemitente(mensaje.SenderId)</span>
+                                    }
+                                    <p class="chat-bubble-text">@mensaje.Body</p>
+                                    <span class="chat-bubble-meta">
+                                        <span class="chat-bubble-time">@mensaje.CreatedAt.ToLocalTime().ToString("HH:mm")</span>
+                                        @if (propia)
+                                        {
+                                            var recibo = CalcularRecibo(mensaje);
+                                            <span class="chat-tick @recibo.Clase" title="@recibo.Titulo">
+                                                @recibo.Marca
+                                            </span>
+                                        }
+                                    </span>
+                                </div>
+                            }
+                            <div class="chat-day">@FormatearDia(grupo.Key)</div>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(error))
+                    {
+                        <p class="chat-error" role="alert">@error</p>
+                    }
+
+                    <footer class="chat-composer">
+                        <input type="text" class="chat-input" placeholder="Escribe un mensaje"
+                               autocomplete="off"
+                               @ref="entradaRef"
+                               @bind="textoNuevo" @bind:event="oninput"
+                               @onkeydown="ManejarTecladoAsync"
+                               disabled="@enviando" />
+                        <button type="button" class="chat-send" aria-label="Enviar mensaje"
+                                disabled="@(enviando || string.IsNullOrWhiteSpace(textoNuevo))"
+                                @onclick="EnviarAsync">
+                            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                <path d="M22 2-7 20-4-9-9-4Z" />
+                                <path d="M22 2 11 13" />
+                            </svg>
+                        </button>
+                    </footer>
+                }
+            </section>
+        </div>
+
+        <div class="chat-resize-handle" role="separator" aria-orientation="vertical"
+             aria-label="Redimensionar el panel de chat"
+             aria-valuemin="@AnchoMinimo" aria-valuemax="@AnchoMaximo"
+             aria-valuenow="@panelWidth"
+             @onpointerdown="IniciarRedimension"
+             @onpointerdown:preventDefault>
+        </div>
+    </aside>
+
+    @if (redimensionando)
+    {
+        <div class="chat-resize-overlay"
+             @onpointermove="ActualizarRedimension"
+             @onpointerup="FinalizarRedimensionAsync"
+             @onpointercancel="CancelarRedimension"
+             @onpointerleave="FinalizarRedimensionAsync">
+        </div>
+    }
+}
+
+@code {
+    private const int AnchoMinimo = 320;
+    private const int AnchoMaximo = 600;
+    private const int AnchoPorDefecto = 420;
+    private const int UmbralDosPaneles = 480;
+    private static readonly TimeSpan IntervaloPolling = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan EsperaReintentoLectura = TimeSpan.FromSeconds(60);
+
+    private readonly List<Profile> contactos = [];
+    private readonly List<Team> grupos = [];
+    private readonly List<ChatMessage> mensajes = [];
+
+    private Guid userId;
+    private bool autenticado;
+    private bool abierto;
+    private bool cargando;
+    private int panelWidth = AnchoPorDefecto;
+    private string filtro = string.Empty;
+    private Conversacion? conversacionSeleccionada;
+    // Conversación guardada en sesión (contacto 1:1 o grupo): se aplica cuando la lista de
+    // contactos ya está cargada.
+    private Guid contactoPendienteId;
+    private Guid grupoPendienteId;
+    private string textoNuevo = string.Empty;
+    private string? error;
+    private bool enviando;
+
+    private bool redimensionando;
+    private double pointerXInicial;
+    private int anchoInicial;
+    // N3: throttle del redimensionado. pointermove puede disparar un evento por píxel y
+    // cada evento provoca un render del circuito; se aplica el ancho como mucho cada 50 ms.
+    // El ancho FINAL no pierde precisión: FinalizarRedimensionAsync (pointerup / leave)
+    // recalcula siempre con la posición actual del puntero antes de persistir.
+    private const int ThrottleRedimensionMs = 50;
+    private long ultimoRenderRedimensionTicks;
+
+    private CancellationTokenSource? pollingCts;
+    private Task? pollingTask;
+    // Evita repetir el PATCH de "marcar leído" cada tick cuando la BD no lo confirmó.
+    private DateTime proximoIntentoLectura = DateTime.MinValue;
+    // Caché de la lista de conversaciones: se recalcula solo cuando cambian sus entradas
+    // (contactos, filtro o mensajes). Se invalida en InvalidarConversaciones().
+    private List<ResumenConversacion>? conversacionesCache;
+    private bool disposed;
+
+    private ElementReference fabRef;
+    private ElementReference busquedaRef;
+    // Botón "volver" del hilo en modo compacto: es el control visible del panel cuando el
+    // buscador está oculto (ver OnAfterRenderAsync).
+    private ElementReference volverRef;
+    // Input de redacción del hilo: es el destino del foco tras un envío (BUG-7).
+    private ElementReference entradaRef;
+    // El foco se mueve DESPUÉS del render: así el panel ya no está en inert
+    // y el FAB existe en el DOM (patrón OnAfterRenderAsync, sin JavaScript).
+    private bool enfocarPanelPendiente;
+    private bool enfocarVolverPendiente;
+    private bool enfocarFabPendiente;
+    // BUG-7: tras enviar, el control con foco queda deshabilitado (el input mientras
+    // "enviando", el botón ✈ con el texto ya vacío) y el navegador deja el foco en el
+    // <body>, con lo que Escape deja de cerrar el panel. Se repone en OnAfterRenderAsync.
+    private bool enfocarEntradaPendiente;
+
+    // Tipo de conversación de la lista: un contacto 1:1 o el grupo de un equipo. Todo el
+    // componente trabaja sobre este registro (lista, hilo, selección) para que el resto —
+    // burbujas, días, resize, foco/Escape, aria-* y throttling — siga intacto.
+    private enum TipoConversacion
+    {
+        Contacto,
+        Grupo
+    }
+
+    private sealed record Conversacion(TipoConversacion Tipo, Guid Id, string Nombre)
+    {
+        public bool EsGrupo => Tipo == TipoConversacion.Grupo;
+    }
+
+    private sealed record ResumenConversacion(Conversacion Conversacion, ChatMessage? UltimoMensaje, int NoLeidos);
+
+    // Marca, tooltip y tono del recibo de una burbuja propia (ver CalcularRecibo).
+    private sealed record EstadoRecibo(string Clase, string Titulo, string Marca);
+
+    private bool modoCompacto => panelWidth < UmbralDosPaneles;
+
+    private int noLeidosTotales => mensajes.Count(message => message.RecipientId == userId && !message.IsRead);
+
+    private string ClaseCuerpo => !modoCompacto
+        ? "dos-paneles"
+        : conversacionSeleccionada is null ? "solo-lista" : "solo-hilo";
+
+    // True cuando el buscador está oculto y el hilo (con su botón "volver") es lo único
+    // visible del panel: el destino del foco se elige con esta regla para que el foco
+    // caiga SIEMPRE dentro del <aside> y Escape (keydown en el aside) siempre funcione.
+    private bool HiloCompactoVisible => modoCompacto && conversacionSeleccionada is not null;
+
+    private IEnumerable<ChatMessage> HiloDeMensajes
+    {
+        get
+        {
+            var seleccionada = conversacionSeleccionada;
+            if (seleccionada is null)
+            {
+                return [];
+            }
+
+            if (seleccionada.EsGrupo)
+            {
+                return DeduplicarGrupo(mensajes.Where(message =>
+                    message.ConversationId == ChatService.ConversationIdDeGrupo(seleccionada.Id)));
+            }
+
+            // El conversation_id del DM se exige EXPLÍCITAMENTE: sin él, una fila de grupo
+            // (mismo sender/recipient) se colaría en el hilo 1:1 con esa persona.
+            var conversacionId = ChatService.CalcularConversationId(userId, seleccionada.Id);
+            return mensajes.Where(message =>
+                message.ConversationId == conversacionId &&
+                ((message.SenderId == userId && message.RecipientId == seleccionada.Id) ||
+                 (message.SenderId == seleccionada.Id && message.RecipientId == userId)));
+        }
+    }
+
+    /// <summary>
+    /// REGLA DE DEDUPLICACIÓN del hilo de grupo: un mensaje propio existe en BD como N filas
+    /// (una por destinatario, incluida la mía) que comparten <c>parent_message_id</c>; los
+    /// mensajes de los demás solo aparecen como MI copia (la query es sender=yo OR
+    /// recipient=yo), así que esos no duplican. Se agrupa por <c>parent_message_id</c> y se
+    /// pinta UNA sola fila por mensaje: si yo soy el remitente se elige MI copia (es la que
+    /// lleva mis recibos), si no, cualquiera (todas comparten body y remitente).
+    /// Los DM no tienen parent_message_id: cada fila es un mensaje y no se agrupan.
+    /// </summary>
+    private IEnumerable<ChatMessage> DeduplicarGrupo(IEnumerable<ChatMessage> copias) =>
+        copias
+            .GroupBy(message => message.ParentMessageId ?? message.Id)
+            .Select(filas =>
+                filas.FirstOrDefault(copia => copia.SenderId == userId)
+                ?? filas.First());
+
+    // En el DOM van del más reciente al más antiguo y la píldora de cada día se emite después
+    // de su grupo; el contenedor usa flex-direction: column-reverse, así que el primer hijo DOM
+    // queda más abajo: se ven (y hacen scroll) de abajo hacia arriba sin JavaScript y cada
+    // píldora queda ENCIMA de sus mensajes, como en WhatsApp.
+    private IEnumerable<IGrouping<DateTime, ChatMessage>> MensajesPorDia => HiloDeMensajes
+        .OrderByDescending(message => message.CreatedAt)
+        .GroupBy(message => message.CreatedAt.ToLocalTime().Date)
+        .OrderByDescending(grupo => grupo.Key);
+
+    // O(contactos×mensajes): se cachea porque el render la pide siempre y, sin caché, se
+    // recalculaba 2 veces por render. Se invalida en los puntos que mutan sus entradas;
+    // la SELECCIÓN no es entrada (el resaltado "activo" usa conversacionSeleccionada
+    // directamente en el markup), así que cambiar de hilo no obliga a recalcular la lista.
+    private List<ResumenConversacion> ConversacionesFiltradas
+    {
+        get
+        {
+            if (conversacionesCache is not null)
+            {
+                return conversacionesCache;
+            }
+
+            // Contactos 1:1 + un grupo por cada equipo del usuario conviven en la MISMA lista
+            // y pasan por el MISMO buscador (los grupos solo se filtran por nombre de equipo).
+            List<(Conversacion Conversacion, string Busqueda)> candidatas = [];
+
+            foreach (var contacto in contactos)
+            {
+                var nombre = NombreContacto(contacto);
+                candidatas.Add(
+                    (new Conversacion(TipoConversacion.Contacto, contacto.Id, nombre),
+                     $"{nombre} {contacto.Email}"));
+            }
+
+            foreach (var equipo in grupos)
+            {
+                var nombre = equipo.Name ?? string.Empty;
+                candidatas.Add((new Conversacion(TipoConversacion.Grupo, equipo.Id, nombre), nombre));
+            }
+
+            if (!string.IsNullOrWhiteSpace(filtro))
+            {
+                candidatas = candidatas
+                    .Where(item => item.Busqueda.Contains(filtro, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+            }
+
+            conversacionesCache = candidatas
+                .Select(item => new ResumenConversacion(
+                    item.Conversacion,
+                    UltimoMensajeDe(item.Conversacion),
+                    ContarNoLeidosDe(item.Conversacion)))
+                .OrderByDescending(resumen => resumen.UltimoMensaje?.CreatedAt ?? DateTimeOffset.MinValue)
+                .ThenBy(resumen => resumen.Conversacion.Nombre, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return conversacionesCache;
+        }
+    }
+
+    // La caché debe quedar obsoleta en cuanto cambia algo que alimenta la lista: si no,
+    // un tick de polling dejaría badges/últimos mensajes viejos en pantalla.
+    private void InvalidarConversaciones() => conversacionesCache = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Enlace Equipos → ChatPanel: la página solo notifica al servicio scoped de chat y
+        // aquí se atiende. Se suscribe antes de cualquier salida temprana para no dejar un
+        // evento huérfano en los circuitos sin sesión (Dispose lo da de baja igualmente).
+        ChatService.ConversacionDeGrupoSolicitada += OnConversacionDeGrupoSolicitada;
+
+        try
+        {
+            await SupabaseService.Initialization;
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo inicializar el chat con Supabase.");
+            return;
+        }
+        catch (InvalidOperationException exception)
+        {
+            // Un InvalidOperationException aquí NO es "no hay sesión": lo decide el
+            // Guid.TryParse de abajo. Casi siempre es un fallo de configuración
+            // (Supabase:Url/Supabase:ApiKey ausentes, lanzado por SupabaseService) o del
+            // arranque del cliente, así que se registra como error y NO como falta de login.
+            Logger.LogError(exception, "Supabase no pudo arrancar para el chat (revisa la configuración Supabase:Url/Supabase:ApiKey).");
+            return;
+        }
+        catch (OperationCanceledException exception)
+        {
+            // Timeout del HttpClient en el arranque (TaskCanceledException es subtipo de
+            // OperationCanceledException): sin este catch la excepción escaparía del lifecycle
+            // de Blazor Server y mataría el circuito; con la inicialización a medias no se
+            // confía el estado, así que el chat se omite en este arranque y un recargar la
+            // página lo reintenta.
+            Logger.LogWarning(exception, "La inicialización de Supabase superó el tiempo de espera; el chat no se activará en este arranque.");
+            return;
+        }
+
+        if (!Guid.TryParse(SupabaseService.Client.Auth.CurrentSession?.User?.Id, out userId))
+        {
+            // Sin sesión no se renderiza nada del chat (patrón de NavMenu).
+            return;
+        }
+
+        autenticado = true;
+        await RestaurarPreferenciasAsync();
+
+        if (!abierto)
+        {
+            // Solo si el panel no se restauró abierto (ese caso ya cargó en AbrirPanelAsync).
+            await CargarEstadoInicialAsync();
+        }
+    }
+
+    // Carga única al autenticar (panel cerrado) para que el badge del FAB y la lista de
+    // contactos no estén vacíos hasta la primera apertura. NO inicia polling: la regla es
+    // 0 consultas con el panel cerrado después de este arranque. Un fallo no debe tumbar
+    // el chat: se registra y el panel sigue funcionando al abrirse (recarga entonces).
+    private async Task CargarEstadoInicialAsync()
+    {
+        try
+        {
+            await CargarListasDeConversacionAsync();
+            await RecargarMensajesAsync();
+            error = null;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para precargar el chat.");
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogWarning(exception, "No se pudo conectar con Supabase para precargar el chat.");
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogWarning(exception, "Supabase devolvió un error al precargar el chat.");
+        }
+        catch (OperationCanceledException exception)
+        {
+            // Timeout del HttpClient durante la precarga: sin este catch, al vivir el método en
+            // OnInitializedAsync, la excepción escaparía al lifecycle y mataría el circuito.
+            Logger.LogWarning(exception, "Se superó el tiempo de espera al precargar el chat; se cargará al abrir el panel.");
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            // Misma red de seguridad que el polling: respuesta inesperada de Supabase.
+            Logger.LogWarning(exception, "Respuesta inesperada de Supabase al precargar el chat; se cargará al abrir el panel.");
+        }
+    }
+
+    // Contactos 1:1 + equipos del usuario (de ahí salen los grupos). Se descargan ANTES de
+    // sustituir las listas: si falla la segunda query no se queda la primera a medias.
+    // Estas 2 peticiones solo ocurren en los puntos de carga (arranque y apertura del panel),
+    // nunca en el polling, así que se respeta la regla de 0 consultas con el panel cerrado.
+    private async Task CargarListasDeConversacionAsync()
+    {
+        var perfiles = await ChatService.ObtenerContactosAsync();
+        var equipos = await SupabaseService.ObtenerEquiposDelUsuario();
+
+        contactos.Clear();
+        contactos.AddRange(perfiles);
+        grupos.Clear();
+        grupos.AddRange(equipos);
+        InvalidarConversaciones();
+    }
+
+    private async Task RestaurarPreferenciasAsync()
+    {
+        try
+        {
+            var ancho = await Storage.GetAsync<int>("chat.ancho");
+            if (ancho.Success)
+            {
+                panelWidth = Math.Clamp(ancho.Value, AnchoMinimo, AnchoMaximo);
+            }
+
+            // Se lee antes de abrir el panel para que la conversación quede disponible
+            // cuando AbrirPanelAsync cargue la lista de contactos y grupos. Se guarda en dos
+            // claves porque un Guid no distingue un id de perfil de un id de equipo.
+            var contacto = await Storage.GetAsync<Guid>("chat.contacto");
+            if (contacto.Success && contacto.Value != Guid.Empty)
+            {
+                contactoPendienteId = contacto.Value;
+            }
+            else
+            {
+                var grupo = await Storage.GetAsync<Guid>("chat.grupo");
+                if (grupo.Success && grupo.Value != Guid.Empty)
+                {
+                    grupoPendienteId = grupo.Value;
+                }
+            }
+
+            var estado = await Storage.GetAsync<bool>("chat.abierto");
+            if (estado.Success && estado.Value)
+            {
+                await AbrirPanelAsync();
+            }
+        }
+        catch (Exception exception) when (EsFalloDeAlmacenamiento(exception))
+        {
+            Logger.LogDebug(exception, "No se pudieron restaurar las preferencias del chat.");
+        }
+    }
+
+    private async Task AlternarPanelAsync()
+    {
+        if (abierto)
+        {
+            await CerrarPanelAsync();
+        }
+        else
+        {
+            await AbrirPanelAsync();
+            // Solo en apertura interactiva: la restauración de sesión no roba el foco.
+            enfocarPanelPendiente = true;
+        }
+    }
+
+    // Escape cierra el panel cuando el foco está dentro (tecla en burbuja desde
+    // cualquier control del panel, incluido el buscador o el input de mensajes).
+    private async Task ManejarTecladoPanelAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Escape" && abierto)
+        {
+            await CerrarPanelAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (enfocarEntradaPendiente)
+        {
+            enfocarEntradaPendiente = false;
+            // El composer solo está en el DOM con el hilo abierto y el panel visible: si
+            // entre el envío y el render se cerró el panel o se volvió a la lista (Escape
+            // o botón "volver" a mitad de envío), el foco lo deciden los otros destinos.
+            if (abierto && conversacionSeleccionada is not null)
+            {
+                enfocarPanelPendiente = false;
+                enfocarVolverPendiente = false;
+                await entradaRef.FocusAsync();
+                return;
+            }
+        }
+
+        if (enfocarPanelPendiente)
+        {
+            enfocarPanelPendiente = false;
+            enfocarVolverPendiente = false;
+            // El destino debe ser SIEMPRE un elemento visible del panel: con el hilo
+            // compacto abierto el buscador está oculto (display:none en el CSS) y su
+            // FocusAsync no entraría el foco al <aside>, dejando Escape fuera de su
+            // alcance. En vista lista el buscador sigue siendo el destino natural.
+            if (HiloCompactoVisible)
+            {
+                await volverRef.FocusAsync();
+            }
+            else
+            {
+                await busquedaRef.FocusAsync();
+            }
+        }
+        else if (enfocarVolverPendiente)
+        {
+            enfocarVolverPendiente = false;
+            await volverRef.FocusAsync();
+        }
+        else if (enfocarFabPendiente)
+        {
+            enfocarFabPendiente = false;
+            await fabRef.FocusAsync();
+        }
+    }
+
+    private async Task AbrirPanelAsync()
+    {
+        abierto = true;
+        cargando = true;
+        proximoIntentoLectura = DateTime.MinValue;
+
+        try
+        {
+            await CargarListasDeConversacionAsync();
+            RestaurarConversacionSeleccionada();
+            await RecargarMensajesAsync();
+            error = null;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para cargar el chat.");
+            error = "No hay una sesión activa para el chat.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo conectar con Supabase para cargar el chat.");
+            error = "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al cargar el chat.");
+            error = "No se pudieron cargar los mensajes. Inténtalo de nuevo.";
+        }
+        catch (OperationCanceledException exception)
+        {
+            // Timeout del HttpClient al abrir: sin este catch, el mismo fallo mataría el
+            // circuito. No hay token de cancelación en esta ruta, así que toda OCE aquí es un
+            // timeout transitorio y se trata como cualquier otro fallo de conexión.
+            Logger.LogWarning(exception, "Se superó el tiempo de espera al cargar el chat; inténtalo de nuevo.");
+            error = "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            cargando = false;
+        }
+
+        IniciarPolling();
+        await GuardarPreferenciaAsync("chat.abierto", true);
+    }
+
+    private async Task CerrarPanelAsync()
+    {
+        abierto = false;
+        DetenerPolling();
+        // Devuelve el foco al disparador para que el teclado no quede perdido.
+        enfocarFabPendiente = true;
+        await GuardarPreferenciaAsync("chat.abierto", false);
+    }
+
+    // ==== Encadenamiento Equipos → panel de chat =====================================
+    // Clic en "💬 Chat del equipo" (página Equipos) → notificación al servicio scoped de
+    // chat → se atiende aquí. Mismo patrón que EtiquetasActualizadas: C#, sin JavaScript y
+    // sin query string, valiéndose de que ChatPanel vive en el layout y comparte el ChatService.
+    private void OnConversacionDeGrupoSolicitada(Guid teamId, string nombreEquipo) =>
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await AbrirGrupoAsync(teamId, nombreEquipo);
+            }
+            finally
+            {
+                // InvokeAsync no redibuja solo: el estado cambia fuera de un evento de UI.
+                if (!disposed)
+                {
+                    StateHasChanged();
+                }
+            }
+        });
+
+    private async Task AbrirGrupoAsync(Guid teamId, string nombreEquipo)
+    {
+        if (!autenticado || teamId == Guid.Empty)
+        {
+            // El panel no llegó a autenticarse: no hay conversaciones que abrir.
+            return;
+        }
+
+        try
+        {
+            if (!abierto)
+            {
+                // Abre, carga contactos + grupos + mensajes e inicia el polling.
+                await AbrirPanelAsync();
+            }
+            else if (contactos.Count == 0 && grupos.Count == 0)
+            {
+                // El panel ya estaba abierto pero la carga previa falló: se reintenta aquí.
+                await CargarListasDeConversacionAsync();
+                await RecargarMensajesAsync();
+            }
+
+            // El equipo pudo crearse hace un momento (o la lista estar desactualizada): se
+            // garantiza la entrada del grupo con el nombre que aporta Equipos, sin consultar.
+            if (grupos.All(equipo => equipo.Id != teamId))
+            {
+                grupos.Add(new Team { Id = teamId, Name = nombreEquipo, CreatedBy = userId });
+                InvalidarConversaciones();
+            }
+
+            var nombre = grupos.FirstOrDefault(equipo => equipo.Id == teamId)?.Name ?? nombreEquipo;
+            await SeleccionarConversacionAsync(new Conversacion(TipoConversacion.Grupo, teamId, nombre));
+
+            // Quien abre el chat a propósito lo espera enfocado, como con el FAB.
+            enfocarPanelPendiente = true;
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "No hay una sesión válida para abrir el chat del equipo {TeamId}.", teamId);
+            error = "Tu sesión ha expirado. Vuelve a entrar para continuar.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo conectar con Supabase para abrir el chat del equipo {TeamId}.", teamId);
+            error = "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase devolvió un error al abrir el chat del equipo {TeamId}.", teamId);
+            error = "No se pudo abrir el chat del equipo. Inténtalo de nuevo.";
+        }
+        catch (OperationCanceledException exception)
+        {
+            Logger.LogWarning(exception, "Se superó el tiempo de espera al abrir el chat del equipo {TeamId}.", teamId);
+            error = "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Logger.LogWarning(exception, "Respuesta inesperada de Supabase al abrir el chat del equipo {TeamId}.", teamId);
+            error = "Respuesta inesperada del servidor. Inténtalo de nuevo.";
+        }
+    }
+
+    // El polling solo existe mientras el panel está abierto; se cancela al cerrar o desmontar.
+    private void IniciarPolling()
+    {
+        if (pollingTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        pollingCts = cts;
+        pollingTask = BucleDePollingAsync(cts);
+    }
+
+    private void DetenerPolling()
+    {
+        var cts = pollingCts;
+        pollingCts = null;
+        pollingTask = null;
+
+        if (cts is null)
+        {
+            return;
+        }
+
+        try
+        {
+            // Solo se cancela: el bucle es quien dispone el CTS al terminar,
+            // para no desechar un token que aún está en uso.
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Carrera improbable: el bucle terminó por una excepción inesperada y ya lo dispuso.
+        }
+    }
+
+    private async Task BucleDePollingAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(IntervaloPolling);
+
+            while (await timer.WaitForNextTickAsync(cts.Token))
+            {
+                cts.Token.ThrowIfCancellationRequested();
+
+                try
+                {
+                    await RecargarMensajesAsync();
+                    await MarcarLeidosDelHiloAsync();
+                }
+                catch (HttpRequestException exception)
+                {
+                    Logger.LogWarning(exception, "Sin conexión con Supabase durante el polling del chat.");
+                }
+                catch (OperationCanceledException exception) when (!cts.IsCancellationRequested)
+                {
+                    // Timeout del HttpClient (TaskCanceledException es subtipo de
+                    // OperationCanceledException), NO una cancelación real del usuario: el
+                    // token del bucle sigue vivo, así que se registra y el siguiente tick
+                    // reintenta. Con el filtro, la cancelación real (panel cerrado /
+                    // desmontaje) no se captura aquí y sigue subiendo al catch externo
+                    // que detiene el bucle. ObjectDisposedException NO es subtipo de
+                    // OperationCanceledException, así que este filtro no lo captura por error.
+                    Logger.LogWarning(exception, "Una consulta del polling del chat superó el tiempo de espera; se reintentará en el próximo tick.");
+                }
+                catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+                {
+                    Logger.LogWarning(exception, "Supabase devolvió un error durante el polling del chat.");
+                }
+                catch (InvalidOperationException exception) when (exception is not ObjectDisposedException)
+                {
+                    // Sesión Supabase caducada: se registra y el siguiente tick reintenta,
+                    // para que el chat no deje de refrescar en silencio.
+                    Logger.LogWarning(exception, "La sesión expiró durante el polling del chat; se reintentará en el próximo tick.");
+                }
+                catch (System.Text.Json.JsonException exception)
+                {
+                    // Respuesta inesperada: mismo tratamiento, el bucle sigue vivo.
+                    Logger.LogWarning(exception, "Respuesta inesperada de Supabase durante el polling del chat; se reintentará en el próximo tick.");
+                }
+
+                if (!disposed && !cts.IsCancellationRequested)
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // El panel se cerró o el componente se desmontó: se detiene el polling.
+        }
+        catch (ObjectDisposedException)
+        {
+            // El componente se desmontó justo al actualizar la interfaz.
+        }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
+
+    private async Task RecargarMensajesAsync()
+    {
+        var cargados = await ChatService.ObtenerMensajesAsync();
+        mensajes.Clear();
+        mensajes.AddRange(cargados);
+        // Cambió la fuente de "último mensaje" y de no leídos: la caché de conversaciones queda obsoleta.
+        InvalidarConversaciones();
+    }
+
+    // Refresco best-effort tras confirmar el envío: si falla, NO se muestra un error
+    // engañoso ni se conserva el texto (evitaría el reenvío duplicado); el próximo
+    // tick de polling trae el mensaje igualmente.
+    private async Task RefrescarMensajesTrasEnvioAsync()
+    {
+        try
+        {
+            await RecargarMensajesAsync();
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogWarning(exception, "No se pudieron refrescar los mensajes tras enviar; se actualizará en el próximo tick.");
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogWarning(exception, "Supabase devolvió un error al refrescar tras enviar; se actualizará en el próximo tick.");
+        }
+        catch (InvalidOperationException exception)
+        {
+            Logger.LogWarning(exception, "La sesión expiró al refrescar tras enviar; se actualizará en el próximo tick.");
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Logger.LogWarning(exception, "Respuesta inesperada al refrescar tras enviar; se actualizará en el próximo tick.");
+        }
+        catch (OperationCanceledException exception)
+        {
+            // Timeout del HttpClient tras confirmar el envío: el mensaje YA está guardado,
+            // así que solo se registra (en debug, es transitorio) y el próximo tick de
+            // polling trae el estado real. Sin este catch, la excepción tumbaría el circuito.
+            Logger.LogDebug(exception, "Se superó el tiempo de espera al refrescar tras enviar; se actualizará en el próximo tick.");
+        }
+    }
+
+    private async Task MarcarLeidosDelHiloAsync()
+    {
+        var seleccionada = conversacionSeleccionada;
+        if (seleccionada is null)
+        {
+            return;
+        }
+
+        if (seleccionada.EsGrupo)
+        {
+            await MarcarLeidosDeGrupoAsync(seleccionada);
+            return;
+        }
+
+        var conversacionId = ChatService.CalcularConversationId(userId, seleccionada.Id);
+        if (!mensajes.Any(message =>
+                message.ConversationId == conversacionId &&
+                message.SenderId == seleccionada.Id &&
+                message.RecipientId == userId &&
+                !message.IsRead))
+        {
+            return;
+        }
+
+        if (DateTime.UtcNow < proximoIntentoLectura)
+        {
+            // La BD rechazó marcar hace poco: no se repite el PATCH en cada tick.
+            return;
+        }
+
+        var resultado = await ChatService.MarcarLeidosAsync(seleccionada.Id);
+
+        switch (resultado)
+        {
+            case ResultadoMarcarLeidos.Marcado:
+                // Solo se pinta ✓✓ cuando la BD confirmó que afectó filas. Se acota al
+                // conversation_id del DM para no marcar como leídas filas de un grupo.
+                foreach (var mensaje in mensajes.Where(message =>
+                             message.ConversationId == conversacionId &&
+                             message.SenderId == seleccionada.Id &&
+                             message.RecipientId == userId))
+                {
+                    mensaje.IsDelivered = true;
+                    mensaje.IsRead = true;
+                }
+
+                // Cambiaron los contadores de no leídos de la lista de conversaciones.
+                InvalidarConversaciones();
+                proximoIntentoLectura = DateTime.MinValue;
+                break;
+
+            case ResultadoMarcarLeidos.SinPermiso:
+                // 200 con 0 filas (RLS): la UI conserva el estado real (sigue sin leer)
+                // y se reintenta con una cadencia razonable o al reabrir el hilo.
+                Logger.LogWarning("La BD no confirmó la lectura de los mensajes de {Contacto}.", seleccionada.Nombre);
+                proximoIntentoLectura = DateTime.UtcNow + EsperaReintentoLectura;
+                break;
+
+            case ResultadoMarcarLeidos.SinCambios:
+                // No quedaba nada pendiente en BD: el siguiente refresh trae el estado real.
+                proximoIntentoLectura = DateTime.MinValue;
+                break;
+        }
+    }
+
+    // Lectura del grupo: solo se marcan MIS copias (conversation_id del equipo + recipient=yo)
+    // de mensajes de OTROS (sender != yo): es lo que la BD me deja confirmar y es justo lo que
+    // los demás verán como ✓✓ sobre sus propios mensajes. Mis copias a mí mismo ya nacen
+    // leídas, así que no entran en el filtro.
+    private async Task MarcarLeidosDeGrupoAsync(Conversacion grupo)
+    {
+        var conversationId = ChatService.ConversationIdDeGrupo(grupo.Id);
+
+        bool PendienteDeLectura(ChatMessage message) =>
+            message.ConversationId == conversationId &&
+            message.RecipientId == userId &&
+            message.SenderId != userId &&
+            !message.IsRead;
+
+        if (!mensajes.Any(PendienteDeLectura))
+        {
+            return;
+        }
+
+        if (DateTime.UtcNow < proximoIntentoLectura)
+        {
+            // Misma anti-flooding que en los DM: la BD no confirmó hace poco.
+            return;
+        }
+
+        var resultado = await ChatService.MarcarLeidosDeGrupoAsync(grupo.Id);
+
+        switch (resultado)
+        {
+            case ResultadoMarcarLeidos.Marcado:
+                foreach (var mensaje in mensajes.Where(message =>
+                             message.ConversationId == conversationId &&
+                             message.RecipientId == userId &&
+                             message.SenderId != userId))
+                {
+                    mensaje.IsDelivered = true;
+                    mensaje.IsRead = true;
+                }
+
+                InvalidarConversaciones();
+                proximoIntentoLectura = DateTime.MinValue;
+                break;
+
+            case ResultadoMarcarLeidos.SinPermiso:
+                Logger.LogWarning("La BD no confirmó la lectura de los mensajes del grupo {Grupo}.", grupo.Nombre);
+                proximoIntentoLectura = DateTime.UtcNow + EsperaReintentoLectura;
+                break;
+
+            case ResultadoMarcarLeidos.SinCambios:
+                proximoIntentoLectura = DateTime.MinValue;
+                break;
+        }
+    }
+
+    // Aplica la conversación restaurada de la sesión solo si sigue en la lista cargada
+    // (contacto o grupo); un equipo del que ya no forme parte se ignora sin fallos.
+    private void RestaurarConversacionSeleccionada()
+    {
+        if (conversacionSeleccionada is not null)
+        {
+            return;
+        }
+
+        if (contactoPendienteId != Guid.Empty)
+        {
+            var pendienteContacto = contactoPendienteId;
+            contactoPendienteId = Guid.Empty;
+            var contacto = contactos.FirstOrDefault(item => item.Id == pendienteContacto);
+            if (contacto is not null)
+            {
+                conversacionSeleccionada =
+                    new Conversacion(TipoConversacion.Contacto, contacto.Id, NombreContacto(contacto));
+                return;
+            }
+        }
+
+        if (grupoPendienteId != Guid.Empty)
+        {
+            var pendienteGrupo = grupoPendienteId;
+            grupoPendienteId = Guid.Empty;
+            var equipo = grupos.FirstOrDefault(item => item.Id == pendienteGrupo);
+            if (equipo is not null)
+            {
+                conversacionSeleccionada = new Conversacion(
+                    TipoConversacion.Grupo, equipo.Id, equipo.Name ?? string.Empty);
+            }
+        }
+    }
+
+    private async Task SeleccionarConversacionAsync(Conversacion conversacion)
+    {
+        conversacionSeleccionada = conversacion;
+        textoNuevo = string.Empty;
+        error = null;
+        proximoIntentoLectura = DateTime.MinValue;
+
+        // En modo compacto la lista queda oculta al abrir el hilo: si el foco seguía en el
+        // botón de la conversación, ese elemento desaparecería del flujo y el foco caería
+        // al body (Escape dejaría de cerrar el panel). Se le pasa al botón "volver", que
+        // es el control visible del hilo compacto. El envío desde Equipos ya lo hace
+        // AbrirGrupoAsync con enfocarPanelPendiente, que tiene prioridad.
+        if (abierto && HiloCompactoVisible)
+        {
+            enfocarVolverPendiente = true;
+        }
+
+        try
+        {
+            // Dos claves porque un Guid no distingue un id de perfil de un id de equipo; la
+            // que no corresponde se limpia para no restaurar una conversación vieja al recargar.
+            await GuardarPreferenciaAsync("chat.contacto", conversacion.EsGrupo ? Guid.Empty : conversacion.Id);
+            await GuardarPreferenciaAsync("chat.grupo", conversacion.EsGrupo ? conversacion.Id : Guid.Empty);
+            await MarcarLeidosDelHiloAsync();
+        }
+        catch (InvalidOperationException exception)
+        {
+            // Misma señal que AbrirPanelAsync: sin sesión no se puede operar y,
+            // sin este catch, la excepción tumbaría el circuito de Blazor Server.
+            Logger.LogWarning(exception, "No hay una sesión válida para marcar los mensajes del chat.");
+            error = "Tu sesión ha expirado. Vuelve a entrar para continuar.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudieron marcar los mensajes como leídos.");
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó marcar los mensajes como leídos.");
+        }
+        catch (OperationCanceledException exception)
+        {
+            // Timeout del HttpClient: se registra y el siguiente tick de polling reanuda.
+            Logger.LogWarning(exception, "Se superó el tiempo de espera al marcar mensajes como leídos.");
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Logger.LogWarning(exception, "Respuesta inesperada de Supabase al marcar mensajes como leídos.");
+        }
+    }
+
+    private async Task VolverAConversaciones()
+    {
+        conversacionSeleccionada = null;
+        textoNuevo = string.Empty;
+        // El botón "volver" queda desmontado al rehacerse el hilo (el foco se iría al
+        // body): se devuelve al buscador, que vuelve a ser el control visible de la lista.
+        if (abierto)
+        {
+            enfocarPanelPendiente = true;
+        }
+
+        await GuardarPreferenciaAsync("chat.contacto", Guid.Empty);
+        await GuardarPreferenciaAsync("chat.grupo", Guid.Empty);
+    }
+
+    private async Task EnviarAsync()
+    {
+        var conversacion = conversacionSeleccionada;
+        if (conversacion is null || enviando)
+        {
+            return;
+        }
+
+        var texto = textoNuevo.Trim();
+        if (string.IsNullOrWhiteSpace(texto))
+        {
+            return;
+        }
+
+        enviando = true;
+
+        try
+        {
+            // Rama de grupo: 1 petición que inserta una fila por miembro (incluido yo).
+            var resultado = conversacion.EsGrupo
+                ? await ChatService.EnviarMensajeAGrupoAsync(conversacion.Id, texto)
+                : await ChatService.EnviarMensajeAsync(conversacion.Id, texto);
+
+            if (resultado == ResultadoEnvioChat.Enviado)
+            {
+                // El envío queda confirmado: se limpia ya el borrador para que un
+                // fallo posterior no invite a reenviar el mismo mensaje.
+                textoNuevo = string.Empty;
+                error = null;
+                await RefrescarMensajesTrasEnvioAsync();
+            }
+            else if (resultado == ResultadoEnvioChat.NoMiembro)
+            {
+                error = "No perteneces a este equipo, así que no puedes escribir en su chat.";
+            }
+            else
+            {
+                error = "No se pudo enviar el mensaje: destinatario no válido.";
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            // Sesión caducada: sin este catch la excepción llegaría al renderer y
+            // terminaría el circuito de Blazor Server.
+            Logger.LogWarning(exception, "No hay una sesión válida para enviar el mensaje de chat.");
+            error = "Tu sesión ha expirado. Vuelve a entrar para continuar.";
+        }
+        catch (HttpRequestException exception)
+        {
+            Logger.LogError(exception, "No se pudo enviar el mensaje de chat.");
+            error = "Sin conexión con el servidor. Inténtalo de nuevo.";
+        }
+        catch (Supabase.Postgrest.Exceptions.PostgrestException exception)
+        {
+            Logger.LogError(exception, "Supabase rechazó el envío del mensaje de chat.");
+            error = "No se pudo enviar el mensaje. Inténtalo de nuevo.";
+        }
+        catch (OperationCanceledException exception)
+        {
+            // Timeout del HttpClient: sin este catch mataría el circuito. Como el envío del
+            // grupo es un solo POST, si expira no se envió nada y se puede reintentar.
+            Logger.LogWarning(exception, "Se superó el tiempo de espera al enviar el mensaje de chat.");
+            error = "No se pudo conectar con el servidor. Inténtalo de nuevo.";
+        }
+        catch (System.Text.Json.JsonException exception)
+        {
+            Logger.LogWarning(exception, "Respuesta inesperada de Supabase al enviar el mensaje de chat.");
+            error = "Respuesta inesperada del servidor. Inténtalo de nuevo.";
+        }
+        finally
+        {
+            enviando = false;
+            // BUG-7: el navegador mueve el foco al <body> cuando el elemento enfocado se
+            // deshabilita (el input durante "enviando" y el botón ✈ al quedarse el texto
+            // vacío). Al terminar el envío —éxito o error— el foco se devuelve al composer
+            // tras el render, para que siga funcionando Escape (keydown en el <aside>).
+            // Sin esta bandera el foco se perdería: el render de habilitación del input no
+            // restaura el foco por sí solo.
+            if (abierto && conversacionSeleccionada is not null)
+            {
+                enfocarEntradaPendiente = true;
+            }
+        }
+    }
+
+    private async Task ManejarTecladoAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter" && !args.ShiftKey)
+        {
+            await EnviarAsync();
+        }
+    }
+
+    private void IniciarRedimension(PointerEventArgs args)
+    {
+        redimensionando = true;
+        pointerXInicial = args.ClientX;
+        anchoInicial = panelWidth;
+        // El primer movimiento no se descarta: el reloj parte en cero.
+        ultimoRenderRedimensionTicks = 0;
+    }
+
+    private void ActualizarRedimension(PointerEventArgs args)
+    {
+        if (!redimensionando)
+        {
+            return;
+        }
+
+        // Throttle: si no han pasado 50 ms desde el último render, se ignora el evento;
+        // pointerup/leave garantizan el render final con el ancho exacto.
+        var ahoraTicks = DateTime.UtcNow.Ticks;
+        if (ultimoRenderRedimensionTicks != 0 &&
+            ahoraTicks - ultimoRenderRedimensionTicks < TimeSpan.FromMilliseconds(ThrottleRedimensionMs).Ticks)
+        {
+            return;
+        }
+
+        ultimoRenderRedimensionTicks = ahoraTicks;
+        AplicarAnchoDesdePuntero(args);
+    }
+
+    private void AplicarAnchoDesdePuntero(PointerEventArgs args)
+    {
+        var delta = args.ClientX - pointerXInicial;
+        panelWidth = (int)Math.Clamp(anchoInicial - delta, AnchoMinimo, AnchoMaximo);
+    }
+
+    private async Task FinalizarRedimensionAsync(PointerEventArgs args)
+    {
+        if (!redimensionando)
+        {
+            return;
+        }
+
+        // Render final garantizado (sin throttle): el ancho persistido es exactamente el
+        // del puntero al soltar, aunque los eventos intermedios se hayan descartado.
+        AplicarAnchoDesdePuntero(args);
+        redimensionando = false;
+        await GuardarPreferenciaAsync("chat.ancho", panelWidth);
+    }
+
+    private void CancelarRedimension(PointerEventArgs args)
+    {
+        redimensionando = false;
+    }
+
+    private void AplicarFiltro(ChangeEventArgs args)
+    {
+        filtro = args.Value?.ToString() ?? string.Empty;
+        // El filtro es una entrada de la lista de conversaciones: invalidar la caché.
+        InvalidarConversaciones();
+    }
+
+    private ChatMessage? UltimoMensajeDe(Conversacion conversacion) => conversacion.EsGrupo
+        // En grupo basta el conversation_id: trae mis copias y las dirigidas a mí. No hace
+        // falta deduplicar aquí (todas las copias de un mismo mensaje comparten texto y hora,
+        // así que el "más reciente" es indiferente cuál de ellas sea).
+        ? mensajes
+            .Where(message => message.ConversationId == ChatService.ConversationIdDeGrupo(conversacion.Id))
+            .MaxBy(message => message.CreatedAt)
+        : HiloMensajesDe(conversacion.Id).MaxBy(message => message.CreatedAt);
+
+    // Contador del badge de la lista: en DM, los mensajes del contacto que no leí; en grupo,
+    // MIS copias de mensajes de OTROS (recipient = yo && sender != yo) sin leer. Las copias
+    // de mis propios mensajes no cuentan nunca (de hecho nacen leídas).
+    private int ContarNoLeidosDe(Conversacion conversacion)
+    {
+        if (conversacion.EsGrupo)
+        {
+            var conversationId = ChatService.ConversationIdDeGrupo(conversacion.Id);
+            return mensajes.Count(message =>
+                message.ConversationId == conversationId &&
+                message.RecipientId == userId &&
+                message.SenderId != userId &&
+                !message.IsRead);
+        }
+
+        return HiloMensajesDe(conversacion.Id)
+            .Count(message => message.SenderId == conversacion.Id && !message.IsRead);
+    }
+
+    // Hilo 1:1: se exige el conversation_id del DM. Sin esa condición, una fila de grupo con
+    // esa misma persona (mismo sender/recipient) aparecería colada en la conversación privada.
+    private IEnumerable<ChatMessage> HiloMensajesDe(Guid contactoId)
+    {
+        var conversacionId = ChatService.CalcularConversationId(userId, contactoId);
+        return mensajes.Where(message =>
+            message.ConversationId == conversacionId &&
+            ((message.SenderId == contactoId && message.RecipientId == userId) ||
+             (message.SenderId == userId && message.RecipientId == contactoId)));
+    }
+
+    private string Prefijo(ChatMessage mensaje) => mensaje.SenderId == userId ? "Tú: " : string.Empty;
+
+    private bool EsMensajeDeGrupo(ChatMessage mensaje) =>
+        conversacionSeleccionada is { EsGrupo: true } grupo &&
+        mensaje.ConversationId == ChatService.ConversationIdDeGrupo(grupo.Id);
+
+    /// <summary>
+    /// Recibo que se pinta en una burbuja propia.
+    /// - DM (sin cambios): ✓ hasta que la BD confirme entrega/lectura del único destinatario.
+    /// - Grupo: se miran SOLO las copias dirigidas a otros miembros con el mismo
+    ///   <c>parent_message_id</c> (las mías a mí mismo no dicen nada de lo que otros han hecho):
+    ///   ✓ si ninguna ha llegado, ✓✓ "Entregado" en cuanto UNA copia ajena está entregada y
+    ///   ✓✓ "Leído por todos" —tono brillante, como el ✓✓ de los DM— solo cuando TODAS las
+    ///   copias ajenas están leídas. La regla se documenta en el title de la burbuja.
+    /// </summary>
+    private EstadoRecibo CalcularRecibo(ChatMessage mensaje)
+    {
+        if (!EsMensajeDeGrupo(mensaje) || mensaje.ParentMessageId is not Guid parent)
+        {
+            return mensaje.IsRead
+                ? new EstadoRecibo("leido", "Leído", "✓✓")
+                : mensaje.IsDelivered
+                    ? new EstadoRecibo("entregado", "Entregado", "✓✓")
+                    : new EstadoRecibo(string.Empty, "Enviado", "✓");
+        }
+
+        var copiasAjenas = mensajes
+            .Where(copia => copia.ParentMessageId == parent && copia.RecipientId != userId)
+            .ToList();
+
+        if (copiasAjenas.Count > 0 && copiasAjenas.All(copia => copia.IsRead))
+        {
+            return new EstadoRecibo("leido", "Leído por todos", "✓✓");
+        }
+
+        if (copiasAjenas.Any(copia => copia.IsDelivered))
+        {
+            return new EstadoRecibo("entregado", "Entregado", "✓✓");
+        }
+
+        return new EstadoRecibo(string.Empty, "Enviado", "✓");
+    }
+
+    // Nombre del remitente para las burbujas de grupo: sale de la lista de contactos ya
+    // cargada (sin consultas por mensaje); si esa persona ya no está en la lista, se muestra
+    // un rótulo genérico en vez de dejar la burbuja sin autor.
+    private string NombreDeRemitente(Guid senderId)
+    {
+        if (senderId == userId)
+        {
+            return "Tú";
+        }
+
+        var perfil = contactos.FirstOrDefault(contacto => contacto.Id == senderId);
+        return perfil is null ? "Miembro del equipo" : NombreContacto(perfil);
+    }
+
+    private static string NombreContacto(Profile contacto) =>
+        string.IsNullOrWhiteSpace(contacto.FullName) ? contacto.Email : contacto.FullName;
+
+    private static string Iniciales(string? nombre)
+    {
+        var name = nombre?.Trim() ?? string.Empty;
+        var partes = name.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        return partes.Length switch
+        {
+            0 => "?",
+            1 => partes[0][..Math.Min(2, partes[0].Length)].ToUpperInvariant(),
+            _ => $"{partes[0][0]}{partes[^1][0]}".ToUpperInvariant()
+        };
+    }
+
+    private static string FormatearDia(DateTime fecha)
+    {
+        var hoy = DateTime.Now.Date;
+
+        if (fecha == hoy)
+        {
+            return "Hoy";
+        }
+
+        if (fecha == hoy.AddDays(-1))
+        {
+            return "Ayer";
+        }
+
+        return fecha.ToString("dd/MM/yyyy");
+    }
+
+    private static string HoraConversacion(ChatMessage mensaje)
+    {
+        var local = mensaje.CreatedAt.ToLocalTime();
+        return local.Date == DateTime.Now.Date ? local.ToString("HH:mm") : local.ToString("dd/MM");
+    }
+
+    private async Task GuardarPreferenciaAsync<T>(string clave, T valor) where T : notnull
+    {
+        try
+        {
+            await Storage.SetAsync(clave, valor);
+        }
+        catch (Exception exception) when (EsFalloDeAlmacenamiento(exception))
+        {
+            Logger.LogDebug(exception, "No se pudo guardar la preferencia del chat.");
+        }
+    }
+
+    // El almacenamiento protegido del navegador es best-effort: nunca debe tumbar el chat.
+    private static bool EsFalloDeAlmacenamiento(Exception exception) =>
+        exception is InvalidOperationException
+            or System.Text.Json.JsonException
+            or OperationCanceledException
+            or ObjectDisposedException
+            or Microsoft.JSInterop.JSException;
+
+    public void Dispose()
+    {
+        disposed = true;
+        // Sin esto, el evento viviría en el ChatService scoped y apuntaría a un panel muerto.
+        ChatService.ConversacionDeGrupoSolicitada -= OnConversacionDeGrupoSolicitada;
+        DetenerPolling();
+    }
+}

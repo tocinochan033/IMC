@@ -1,0 +1,189 @@
+.task-card {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 12px 10px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #FFFFFF;
+}
+
+.task-card h5 {
+    margin: 0;
+    color: #26323C;
+    font-size: .8125rem;
+    font-weight: 600;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.task-description {
+    margin: -1px 0 0;
+    color: #68737D;
+    font-size: .6875rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+}
+
+.task-card-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    color: #68737D;
+    font-size: .625rem;
+}
+
+.task-assignee {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    color: #26323C;
+}
+
+.unassigned,
+.task-due {
+    color: #8A949D;
+}
+
+.small-avatar {
+    width: 21px;
+    height: 21px;
+    font-size: .5625rem;
+}
+
+.assignee-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.task-due {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.task-card-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    margin-top: 1px;
+    padding-top: 8px;
+    border-top: 1px solid #D5DBE0;
+}
+
+.status-select {
+    max-width: 120px;
+    min-height: 27px;
+    padding: 4px 7px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+    color: #68737D;
+    font: inherit;
+    font-size: .625rem;
+    cursor: pointer;
+}
+
+.status-select:focus-visible {
+    outline: 2px solid #2C5F8A;
+    outline-offset: 2px;
+}
+
+.status-select.status-in-progress {
+    color: #2C5F8A;
+}
+
+.status-select.status-done {
+    color: #57866F;
+}
+
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.icon-button {
+    min-width: 25px;
+    min-height: 26px;
+    padding: 4px;
+    border: 0;
+    border-radius: 3px;
+    background: transparent;
+    color: #68737D;
+    font: inherit;
+    font-size: .875rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.icon-button:hover {
+    background: #EEF4F8;
+    color: #2C5F8A;
+}
+
+.edit-action {
+    color: #2C5F8A;
+}
+
+.delete-action:hover,
+.delete-action.confirm-delete {
+    background: #F9EEEE;
+    color: #A33A3A;
+}
+
+.delete-action.confirm-delete {
+    font-size: .625rem;
+    white-space: nowrap;
+}
+
+/* Asignación múltiple: lista con scroll propio para no desbordar la tarjeta */
+.task-assignees {
+    min-width: 0;
+    max-height: 74px;
+    margin: 0;
+    padding: 0;
+    overflow-y: auto;
+    list-style: none;
+}
+
+.task-assignees .task-assignee + .task-assignee {
+    margin-top: 5px;
+}
+
+/* Avatar de asignado (paleta: Secondary Light / Primary) */
+.task-assignees .small-avatar {
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #EAF1F7;
+    color: #2C5F8A;
+    font-weight: 600;
+}
+
+/* Estado en solo lectura: mismo pie de tarjeta pero sin apariencia de control */
+.status-readonly {
+    display: inline-flex;
+    align-items: center;
+    min-height: 27px;
+    padding: 4px 7px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+    color: #68737D;
+    font-size: .625rem;
+}
+
+.status-readonly.status-in-progress {
+    color: #2C5F8A;
+}
+
+.status-readonly.status-done {
+    color: #57866F;
+}

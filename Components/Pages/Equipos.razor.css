@@ -471,6 +471,473 @@
     color: #2C5F8A;
 }
 
+
+.primary-button,
+.secondary-button {
+    min-height: 38px;
+    padding: 8px 13px;
+    border: 1px solid #2C5F8A;
+    border-radius: 5px;
+    font: inherit;
+    font-size: .8125rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.primary-button {
+    background: #2C5F8A;
+    color: #FFFFFF;
+}
+
+.primary-button:hover:not(:disabled) {
+    border-color: #26323C;
+    background: #26323C;
+}
+
+.primary-button:disabled {
+    cursor: not-allowed;
+    opacity: .65;
+}
+
+.secondary-button {
+    border-color: #D5DBE0;
+    background: #FFFFFF;
+    color: #26323C;
+}
+
+.tasks-section {
+    padding: 24px 23px 20px;
+}
+
+.tasks-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 18px;
+}
+
+.tasks-heading h3 {
+    font-size: 1rem;
+}
+
+.new-task-button {
+    min-width: 120px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.new-task-button span {
+    font-size: 1.125rem;
+    line-height: 1;
+}
+
+.kanban-board {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.kanban-column {
+    min-width: 0;
+    min-height: 420px;
+    padding: 12px 9px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+}
+
+.kanban-column-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 3px;
+}
+
+.kanban-column-heading > div {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.kanban-column-heading h4 {
+    margin: 0;
+    color: #26323C;
+    font-size: .8125rem;
+    font-weight: 600;
+}
+
+.status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #8A949D;
+}
+
+.in-progress .status-dot {
+    background: #2C5F8A;
+}
+
+.done .status-dot {
+    background: #57866F;
+}
+
+.column-count {
+    color: #68737D;
+    font-size: .6875rem;
+}
+
+.status-key {
+    display: block;
+    margin: 5px 3px 14px;
+    color: #8A949D;
+    font-size: .625rem;
+}
+
+.kanban-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.column-empty {
+    margin: 0;
+    padding: 16px 8px;
+    color: #8A949D;
+    font-size: .75rem;
+    text-align: center;
+}
+
+.task-board-notice {
+    margin: 16px 0 0;
+    color: #68737D;
+    font-size: .6875rem;
+}
+
+.task-form {
+    padding: 20px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+}
+
+.task-form-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.task-form-heading h4 {
+    margin: 0;
+    color: #26323C;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.task-form-heading p {
+    margin: 5px 0 0;
+    color: #68737D;
+    font-size: .75rem;
+}
+
+.text-button {
+    padding: 5px 0;
+    border: 0;
+    background: transparent;
+    color: #2C5F8A;
+    font: inherit;
+    font-size: .75rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.task-form-summary {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 18px;
+    padding: 10px 12px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+}
+
+.task-form-summary > span {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.task-form-summary > span:last-child {
+    align-items: flex-end;
+}
+
+.task-form-summary small {
+    color: #8A949D;
+    font-size: .625rem;
+}
+
+.task-form-summary strong {
+    color: #26323C;
+    font-size: .75rem;
+    font-weight: 500;
+}
+
+.form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    margin-bottom: 16px;
+}
+
+.form-field label {
+    color: #26323C;
+    font-size: .8125rem;
+    font-weight: 500;
+}
+
+.optional-label,
+.field-help {
+    color: #8A949D;
+    font-size: .6875rem;
+    font-weight: 400;
+}
+
+.required-mark {
+    color: #2C5F8A;
+}
+
+.form-field input,
+.form-field textarea,
+.form-field select {
+    width: 100%;
+    min-height: 40px;
+    padding: 9px 11px;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #FFFFFF;
+    color: #26323C;
+    font: inherit;
+    font-size: .8125rem;
+}
+
+.form-field textarea {
+    min-height: 88px;
+    resize: vertical;
+}
+
+.form-field input:focus,
+.form-field textarea:focus,
+.form-field select:focus {
+    border-color: #2C5F8A;
+    outline: 2px solid rgb(44 95 138 / 12%);
+}
+
+.task-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.field-help {
+    line-height: 1.4;
+}
+
+.task-form-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-top: 6px;
+    padding-top: 14px;
+    border-top: 1px solid #D5DBE0;
+    color: #8A949D;
+    font-size: .6875rem;
+}
+
+.task-form-footer > div {
+    display: flex;
+    gap: 9px;
+}
+
+/* Acceso al chat de grupo del equipo (visible para todos los miembros) */
+.team-chat-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 30px;
+    padding: 5px 10px;
+    border: 1px solid #2C5F8A;
+    border-radius: 5px;
+    background: #FFFFFF;
+    color: #2C5F8A;
+    font: inherit;
+    font-size: .75rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.team-chat-button:hover:not(:disabled) {
+    background: #2C5F8A;
+    color: #FFFFFF;
+}
+
+.team-chat-button:focus-visible {
+    outline: 2px solid #2C5F8A;
+    outline-offset: 2px;
+}
+
+.team-chat-button:disabled {
+    cursor: not-allowed;
+    opacity: .65;
+}
+
+/* Quitar miembro (solo el jefe; la fila del creador no lleva botón) */
+.member-remove-button {
+    flex: 0 0 auto;
+    min-width: 30px;
+    min-height: 28px;
+    padding: 4px 9px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+    color: #68737D;
+    font: inherit;
+    font-size: .75rem;
+    cursor: pointer;
+}
+
+.member-remove-button:hover:not(:disabled) {
+    border-color: #A33A3A;
+    background: #F9EEEE;
+    color: #A33A3A;
+}
+
+.member-remove-button:focus-visible {
+    outline: 2px solid #2C5F8A;
+    outline-offset: 2px;
+}
+
+.member-remove-button:disabled {
+    cursor: not-allowed;
+    opacity: .65;
+}
+
+.member-remove-button.confirm-remove {
+    border-color: #A33A3A;
+    background: #A33A3A;
+    color: #FFFFFF;
+    font-size: .6875rem;
+    white-space: nowrap;
+}
+
+/* Multi-asignación: chips con checkbox en el formulario de tarea */
+.assignee-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    max-height: 220px;
+    padding: 10px;
+    overflow-y: auto;
+    border: 1px solid #D5DBE0;
+    border-radius: 4px;
+    background: #F7F8F9;
+}
+
+.assignee-chip {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid #D5DBE0;
+    border-radius: 5px;
+    background: #FFFFFF;
+    color: #26323C;
+    cursor: pointer;
+}
+
+.assignee-chip:hover {
+    background: #EEF4F8;
+}
+
+.assignee-chip.selected {
+    border-color: #2C5F8A;
+    background: #EAF1F7;
+}
+
+.assignee-chip input {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: #2C5F8A;
+}
+
+.assignee-chip input:focus-visible {
+    outline: 2px solid #2C5F8A;
+    outline-offset: 2px;
+}
+
+.chip-avatar {
+    flex: 0 0 auto;
+    width: 24px;
+    height: 24px;
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    background: #EAF1F7;
+    color: #2C5F8A;
+    font-size: .625rem;
+    font-weight: 600;
+}
+
+.assignee-chip.selected .chip-avatar {
+    background: #2C5F8A;
+    color: #FFFFFF;
+}
+
+.chip-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.chip-name,
+.chip-email {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.chip-name {
+    color: #26323C;
+    font-size: .75rem;
+    font-weight: 500;
+}
+
+.chip-email {
+    color: #68737D;
+    font-size: .625rem;
+}
+
+@media (max-width: 1040px) {
+    .kanban-board {
+        grid-template-columns: 1fr;
+    }
+
+    .kanban-column {
+        min-height: 130px;
+    }
+}
+
+
 @media (max-width: 760px) {
     .teams-page {
         padding: 22px 16px 32px;

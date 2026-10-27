@@ -2,6 +2,7 @@ using Supabase;
 using MailboxEntry = IMC_.Models.MailboxEntry;
 using Message = IMC_.Models.Message;
 using Profile = IMC_.Models.Profile;
+using TaskAssignee = IMC_.Models.TaskAssignee;
 using Team = IMC_.Models.Team;
 using TeamMember = IMC_.Models.TeamMember;
 using TeamTask = IMC_.Models.TeamTask;
@@ -15,7 +16,20 @@ public enum ResultadoAgregarMiembro
 {
     Agregado,
     CuentaNoEncontrada,
-    YaEsMiembro
+    YaEsMiembro,
+    // El equipo solo lo puede ampliar su creador (decisión de producto: solo el jefe delega).
+    NoAutorizado
+}
+
+public enum ResultadoEliminarMiembro
+{
+    Eliminado,
+    // Quien llama no es el creador del equipo.
+    NoAutorizado,
+    // La persona indicada no pertenece al equipo (o la fila ya no existe).
+    NoEsMiembro,
+    // El creador no puede expulsarse a sí mismo: el equipo nunca se quedaría sin jefe.
+    NoEliminarJefe
 }
 
 public enum ResultadoEnvioCorreo
@@ -123,7 +137,15 @@ public class SupabaseService
             .Where(profile => memberIds.Contains(profile.Id))
             .Get();
 
-        return profilesResponse.Models;
+        // Orden determinista por nombre visible (nombre completo o email si falta, sin
+        // distinguir mayúsculas): es el MISMO criterio con el que la página pinta la lista de
+        // miembros y los chips de asignados, y con el que calcula el responsable principal
+        // (tasks.assignee_id). Así "el primero de la lista" siempre es la misma persona y las
+        // tres vistas coinciden; sin este OrderBy el orden venía sin ORDER BY de la BD.
+        return profilesResponse.Models
+            .OrderBy(profile => string.IsNullOrWhiteSpace(profile.FullName) ? profile.Email : profile.FullName,
+                StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public async Task<Team> CrearEquipo(string nombre, string? descripcion = null)
@@ -134,7 +156,7 @@ public class SupabaseService
         if (!await PuedeCrearEquipoAsync(userId))
         {
             throw new UnauthorizedAccessException(
-                "Solo los perfiles con rol project_manager o admin pueden crear equipos.");
+                "Solo los perfiles con rol team_manager, project_manager o admin pueden crear equipos.");
         }
 
         if (string.IsNullOrWhiteSpace(nombre))
@@ -146,6 +168,12 @@ public class SupabaseService
             .From<Team>()
             .Insert(new Team
             {
+                // Team.Id lleva [Column("id")], así que el cliente lo serializa en el
+                // INSERT: si no se fija aquí viaja Guid.Empty y la BD persiste ese id
+                // (el siguiente equipo chocaría en la PK con 23505). Mismo patrón que
+                // ChatService.EnviarMensajeAsync; TeamTask no necesita el Guid porque su
+                // Id no lleva [Column] y lo genera la BD.
+                Id = Guid.NewGuid(),
                 Name = nombre,
                 Description = descripcion,
                 CreatedBy = userId
@@ -157,6 +185,11 @@ public class SupabaseService
         return team;
     }
 
+    /// <summary>
+    /// Consulta pública de si el usuario autenticado puede crear un equipo. Delega en
+    /// <see cref="PuedeCrearEquipoAsync(Guid)"/>, que aplica la única regla de roles
+    /// autorizados para gestionar equipos (team_manager, project_manager o admin).
+    /// </summary>
     public async Task<bool> PuedeCrearEquipoAsync()
     {
         await Initialization;
@@ -165,6 +198,26 @@ public class SupabaseService
         return await PuedeCrearEquipoAsync(userId);
     }
 
+    public async Task<string?> ObtenerRolUsuarioActualAsync()
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("consultar el rol del usuario actual");
+
+        var profileResponse = await Client
+            .From<Profile>()
+            .Filter("id", Operator.Equals, userId.ToString())
+            .Get();
+
+        return profileResponse.Models.FirstOrDefault()?.Role;
+    }
+
+    /// <summary>
+    /// Única regla de quién puede CREAR un equipo: tener rol team_manager, project_manager o
+    /// admin, es decir el MISMO conjunto de roles (y el mismo comparador) que decide quién
+    /// puede invitar a un equipo: <see cref="EsRolAutorizadoParaGestionarEquipos"/>. Así
+    /// "roles autorizados para gestionar equipos" es una sola noción compartida por crear e
+    /// invitar y las dos reglas no pueden divergir.
+    /// </summary>
     private async Task<bool> PuedeCrearEquipoAsync(Guid userId)
     {
         var profileResponse = await Client
@@ -172,19 +225,142 @@ public class SupabaseService
             .Filter("id", Operator.Equals, userId.ToString())
             .Get();
 
-        var role = profileResponse.Models.FirstOrDefault()?.Role;
-        return string.Equals(role?.Trim(), "project_manager", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
+        return EsRolAutorizadoParaGestionarEquipos(profileResponse.Models.FirstOrDefault()?.Role);
     }
+
+    /// <summary>
+    /// Comprueba si el usuario autenticado es el creador (jefe) del equipo.
+    /// Se lee <c>teams.created_by</c> en lugar de invocar la RPC <c>is_team_creator</c>:
+    /// es la MISMA columna con la que la página Equipos pinta "Creador/Miembro", de modo que
+    /// la autorización en backend y lo que muestra la UI no pueden divergir, y el servicio no
+    /// depende de que la RPC siga existiendo. Si la RLS de teams no deja leer la fila (no se
+    /// es miembro), la consulta vuelve vacía ⇒ false, que es exactamente el resultado correcto.
+    /// </summary>
+    public async Task<bool> EsJefeDelEquipoAsync(Guid teamId)
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("comprobar quién creó el equipo");
+        return await EsJefeDelEquipoAsync(teamId, userId);
+    }
+
+    private async Task<bool> EsJefeDelEquipoAsync(Guid teamId, Guid userId)
+    {
+        var response = await Client
+            .From<Team>()
+            .Filter("id", Operator.Equals, teamId.ToString())
+            .Get();
+
+        var team = response.Models.FirstOrDefault();
+        return team is not null && team.CreatedBy == userId;
+    }
+
+    /// <summary>
+    /// Expulsa a una persona del equipo. Solo lo puede hacer el creador, nunca contra sí
+    /// mismo (el equipo no puede quedarse sin jefe) y solo sobre quien realmente es miembro.
+    /// Devuelve el motivo en vez de lanzar: la página lo traduce a un mensaje concreto.
+    /// </summary>
+    public async Task<ResultadoEliminarMiembro> EliminarMiembro(Guid teamId, Guid userId)
+    {
+        await Initialization;
+        var usuarioActual = ObtenerUsuarioAutenticadoId("quitar miembros del equipo");
+
+        if (userId == Guid.Empty || userId == usuarioActual)
+        {
+            return ResultadoEliminarMiembro.NoEliminarJefe;
+        }
+
+        var teamResponse = await Client
+            .From<Team>()
+            .Filter("id", Operator.Equals, teamId.ToString())
+            .Get();
+
+        var team = teamResponse.Models.FirstOrDefault();
+        if (team is null || team.CreatedBy != usuarioActual)
+        {
+            return ResultadoEliminarMiembro.NoAutorizado;
+        }
+
+        if (team.CreatedBy == userId)
+        {
+            // Defensa adicional: aunque el llamante no fuera el creador, nadie puede quitar al creador.
+            return ResultadoEliminarMiembro.NoEliminarJefe;
+        }
+
+        var membershipResponse = await Client
+            .From<TeamMember>()
+            .Filter("team_id", Operator.Equals, teamId.ToString())
+            .Filter("user_id", Operator.Equals, userId.ToString())
+            .Get();
+
+        if (membershipResponse.Models.Count == 0)
+        {
+            return ResultadoEliminarMiembro.NoEsMiembro;
+        }
+
+        var deleteResponse = await Client
+            .From<TeamMember>()
+            .Filter("team_id", Operator.Equals, teamId.ToString())
+            .Filter("user_id", Operator.Equals, userId.ToString())
+            .Delete();
+
+        // Mismo criterio honesto que en el resto del módulo: lo que decide es lo que la BD confirmó.
+        return deleteResponse.Models.Count > 0
+            ? ResultadoEliminarMiembro.Eliminado
+            : ResultadoEliminarMiembro.NoEsMiembro;
+    }
+
+    /// <summary>
+    /// Única regla de quién puede invitar a un equipo: ser el creador (teams.created_by, la
+    /// MISMA columna con la que la página pinta "Creador/Miembro" y con la que se autoriza
+    /// agregar/quitar miembros) Y tener rol team_manager, project_manager o admin. Es la
+    /// intersección de lo que antes comprobaban por separado la página (rol) y este servicio
+    /// (creador), es decir la política más restrictiva de las dos: así la UI y el backend no
+    /// pueden divergir. El rol exigido es el MISMO conjunto que la regla de CREAR equipo
+    /// (PuedeCrearEquipoAsync): team_manager, project_manager o admin, evaluado por
+    /// <see cref="EsRolAutorizadoParaGestionarEquipos"/>; lo único que añade esta regla es la
+    /// condición de ser el creador del equipo.
+    /// </summary>
+    public async Task<bool> PuedeInvitarAlEquipoAsync(Guid teamId)
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("comprobar los permisos para invitar al equipo");
+        return await PuedeInvitarAlEquipoAsync(teamId, userId);
+    }
+
+    private async Task<bool> PuedeInvitarAlEquipoAsync(Guid teamId, Guid userId)
+    {
+        if (!await EsJefeDelEquipoAsync(teamId, userId))
+        {
+            return false;
+        }
+
+        return EsRolAutorizadoParaGestionarEquipos(await ObtenerRolUsuarioActualAsync());
+    }
+
+    // Única noción de "rol autorizado para gestionar equipos" (crear un equipo o ampliar uno
+    // existente): la MISMA lista y el MISMO comparador que regían en la UI antes de
+    // centralizar las reglas aquí, así crear e invitar comparten una sola definición.
+    private static bool EsRolAutorizadoParaGestionarEquipos(string? role) =>
+        string.Equals(role?.Trim(), "team_manager", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(role?.Trim(), "project_manager", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(role?.Trim(), "admin", StringComparison.OrdinalIgnoreCase);
 
     public async Task<ResultadoAgregarMiembro> AgregarMiembro(Guid teamId, string email)
     {
         await Initialization;
-        _ = ObtenerUsuarioAutenticadoId("agregar miembros al equipo");
+        var userId = ObtenerUsuarioAutenticadoId("agregar miembros al equipo");
 
         if (string.IsNullOrWhiteSpace(email))
         {
             throw new ArgumentException("El email es obligatorio.", nameof(email));
+        }
+
+        // Defensa en profundidad: la RLS de team_members ya exige ser el creador, aquí se
+        // comprueba ANTES la misma regla completa que consume la UI (creador + rol) para no
+        // mandar una llamada que va a ser rechazada.
+        if (!await PuedeInvitarAlEquipoAsync(teamId, userId))
+        {
+            return ResultadoAgregarMiembro.NoAutorizado;
         }
 
         var profileResponse = await Client
@@ -241,20 +417,66 @@ public class SupabaseService
         return response.Models;
     }
 
+    /// <summary>
+    /// Devuelve el conjunto completo de asignados (tabla <c>task_assignees</c>) de las tareas
+    /// indicadas, agrupado por tarea. Se pide en UNA sola consulta para poder pintar el kanban
+    /// completo sin disparar una petición por tarjeta.
+    /// Sintaxis en Supabase.Postgrest 8.3.1: existe <c>Operator.In</c>, pero su criterio hay
+    /// que construirlo a mano como cadena PostgREST "in.(...)" (con GUIDs, escapado incluido).
+    /// Se usa la traducción LINQ <c>Where(x =&gt; ids.Contains(x.TaskId))</c> del mismo cliente,
+    /// que genera ese filtro ya escapado y es ya el patrón del repo (ObtenerMiembrosDelEquipo,
+    /// ObtenerNombresRemitentesAsync...): misma query, un riesgo menos y código consistente.
+    /// </summary>
+    public async Task<Dictionary<Guid, List<Guid>>> ObtenerAsignadosAsync(IEnumerable<Guid> taskIds)
+    {
+        await Initialization;
+        _ = ObtenerUsuarioAutenticadoId("consultar los asignados de las tareas");
+
+        var ids = taskIds.Distinct().ToList();
+        if (ids.Count == 0)
+        {
+            return [];
+        }
+
+        var response = await Client
+            .From<TaskAssignee>()
+            .Where(assignee => ids.Contains(assignee.TaskId))
+            .Get();
+
+        return response.Models
+            .GroupBy(assignee => assignee.TaskId)
+            .ToDictionary(grupo => grupo.Key, grupo => grupo.Select(assignee => assignee.UserId).Distinct().ToList());
+    }
+
+    /// <summary>
+    /// Crea una tarea y registra sus asignados en <c>task_assignees</c>.
+    /// Solo el creador del equipo puede hacerlo: se comprueba aquí antes de escribir para no
+    /// mandar una llamada que la RLS rechazaría (la BD sigue siendo la última barrera).
+    /// <paramref name="asignados"/> es el conjunto completo de personas; si se omite se
+    /// conserva la firma clásica y solo queda asignado <paramref name="responsableId"/>.
+    /// </summary>
     public async Task<TeamTask> CrearTarea(
         Guid teamId,
         string titulo,
         string? descripcion = null,
         Guid? responsableId = null,
-        DateTimeOffset? venceEn = null)
+        DateTimeOffset? venceEn = null,
+        IEnumerable<Guid>? asignados = null)
     {
         await Initialization;
-        _ = ObtenerUsuarioAutenticadoId("crear tareas");
+        var userId = ObtenerUsuarioAutenticadoId("crear tareas");
 
         if (string.IsNullOrWhiteSpace(titulo))
         {
             throw new ArgumentException("El título de la tarea es obligatorio.", nameof(titulo));
         }
+
+        if (!await EsJefeDelEquipoAsync(teamId, userId))
+        {
+            throw new UnauthorizedAccessException("Solo el creador del equipo puede crear tareas.");
+        }
+
+        var asignadosNormalizados = NormalizarAsignados(asignados, responsableId);
 
         var response = await Client
             .From<TeamTask>()
@@ -264,14 +486,48 @@ public class SupabaseService
                 Title = titulo,
                 Description = descripcion,
                 Status = "todo",
-                AssigneeId = responsableId,
+                // El primer asignado del conjunto es el responsable principal (retrocompatibilidad).
+                AssigneeId = asignadosNormalizados.Count > 0 ? asignadosNormalizados[0] : null,
                 DueAt = venceEn
             });
 
-        return response.Models.FirstOrDefault()
+        var task = response.Models.FirstOrDefault()
             ?? throw new InvalidOperationException("Supabase no devolvió la tarea creada.");
+
+        if (asignadosNormalizados.Count > 0)
+        {
+            try
+            {
+                await SincronizarAsignadosAsync(task.Id, asignadosNormalizados);
+            }
+            catch (Exception)
+            {
+                // task_assignees se escribe después de la tarea (FK): si falla (tabla aún no
+                // expuesta, RLS, caída transitoria) se retira la tarea recién creada para no
+                // dejar un estado a medias que además provocaría tareas duplicadas al reintentar.
+                try
+                {
+                    await EliminarTareaDirectaAsync(task.Id);
+                }
+                catch (Exception)
+                {
+                    // Mejor esfuerzo: si tampoco se puede retirar, manda el error original
+                    // (el que explica el fallo de task_assignees) y la tarea quedaría sin asignados.
+                }
+
+                throw;
+            }
+        }
+
+        return task;
     }
 
+    /// <summary>
+    /// Cambia el estado de una tarea. La BD solo lo permite al creador del equipo o a quien la
+    /// tiene como <c>assignee_id</c> (trigger de <c>tasks</c>), así que la comprobación de
+    /// asignación vive en la página (tiene la tarea y su asignación a mano y evita la consulta
+    /// extra); el rechazo del trigger se captura ahí con un mensaje claro.
+    /// </summary>
     public async Task ActualizarEstadoTarea(Guid taskId, string estado)
     {
         await Initialization;
@@ -288,6 +544,146 @@ public class SupabaseService
             .Set(task => task.Status, estado)
             .Update();
     }
+
+    /// <summary>
+    /// Actualiza los datos de una tarea y reescribe sus asignados en <c>task_assignees</c>.
+    /// <paramref name="teamId"/> hace doble condición: sirve para autorizar (ser el creador)
+    /// y se añade al WHERE para que un id de equipo incorrecto no pueda tocar tareas de otro.
+    /// </summary>
+    public async Task ActualizarTarea(
+        Guid teamId,
+        Guid taskId,
+        string titulo,
+        string? descripcion,
+        Guid? responsableId,
+        DateTimeOffset? venceEn,
+        IEnumerable<Guid>? asignados = null)
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("actualizar tareas");
+
+        if (string.IsNullOrWhiteSpace(titulo))
+        {
+            throw new ArgumentException("El título de la tarea es obligatorio.", nameof(titulo));
+        }
+
+        if (!await EsJefeDelEquipoAsync(teamId, userId))
+        {
+            throw new UnauthorizedAccessException("Solo el creador del equipo puede editar tareas.");
+        }
+
+        var asignadosNormalizados = NormalizarAsignados(asignados, responsableId);
+
+        // Orden de escrituras pensado para que un fallo deje el estado anterior: primero se
+        // leen los asignados actuales (base de la compensación), luego se reescribe
+        // task_assignees y al final la tarea. Update() devuelve las filas que cumplieron el
+        // WHERE: 0 significa que la tarea no existe o no pertenece al equipo, y avisar evita
+        // pintar "guardado" sin guardar.
+        var asignadosPrevios = (await ObtenerAsignadosAsync([taskId]))
+            .TryGetValue(taskId, out var previos) ? previos : [];
+
+        try
+        {
+            await SincronizarAsignadosAsync(taskId, asignadosNormalizados);
+
+            var response = await Client
+                .From<TeamTask>()
+                .Filter("id", Operator.Equals, taskId.ToString())
+                .Filter("team_id", Operator.Equals, teamId.ToString())
+                .Set(task => task.Title, titulo)
+                .Set(task => task.Description!, descripcion!)
+                .Set(task => task.AssigneeId!, asignadosNormalizados.Count > 0 ? asignadosNormalizados[0] : null!)
+                .Set(task => task.DueAt!, venceEn!)
+                .Update();
+
+            if (response.Models.Count == 0)
+            {
+                throw new InvalidOperationException("La tarea no existe o no pertenece a ese equipo.");
+            }
+        }
+        catch (Exception)
+        {
+            // Compensación (mismo criterio que CrearTarea, que retira la tarea creada si
+            // task_assignees falla): si algo falló después de tocar task_assignees, se
+            // reescribe el conjunto anterior para no dejar la tarea con los asignados
+            // vacíos o a medias.
+            try
+            {
+                await SincronizarAsignadosAsync(taskId, asignadosPrevios);
+            }
+            catch (Exception)
+            {
+                // Mejor esfuerzo: si tampoco se puede restaurar, se propaga el error original.
+            }
+
+            throw;
+        }
+    }
+
+    public async Task EliminarTarea(Guid teamId, Guid taskId)
+    {
+        await Initialization;
+        var userId = ObtenerUsuarioAutenticadoId("eliminar tareas");
+
+        if (!await EsJefeDelEquipoAsync(teamId, userId))
+        {
+            throw new UnauthorizedAccessException("Solo el creador del equipo puede eliminar tareas.");
+        }
+
+        await Client
+            .From<TeamTask>()
+            .Filter("id", Operator.Equals, taskId.ToString())
+            .Filter("team_id", Operator.Equals, teamId.ToString())
+            .Delete();
+    }
+
+    /// <summary>
+    /// Devuelve el conjunto de asignados sin duplicados ni ids vacíos y con el responsable
+    /// principal el primero: ese orden define quién queda en <c>tasks.assignee_id</c>.
+    /// </summary>
+    private static List<Guid> NormalizarAsignados(IEnumerable<Guid>? asignados, Guid? responsableId)
+    {
+        List<Guid> ids = responsableId is Guid principal ? [principal] : [];
+
+        if (asignados is not null)
+        {
+            ids.AddRange(asignados);
+        }
+
+        return ids.Where(id => id != Guid.Empty).Distinct().ToList();
+    }
+
+    /// <summary>
+    /// Reescribe las filas de <c>task_assignees</c> de una tarea: borra las previas y
+    /// reinserta las actuales. Se eligió "borrar todo y reinsertar" frente a un diff porque
+    /// el conjunto suele tener 1-3 filas (coste irrelevante), así se refleja también una
+    /// baja y no puede quedar ninguna fila huérfana. Solo lo llama el jefe (comprobado antes).
+    /// </summary>
+    private async Task SincronizarAsignadosAsync(Guid taskId, IReadOnlyCollection<Guid> asignados)
+    {
+        await Client
+            .From<TaskAssignee>()
+            .Filter("task_id", Operator.Equals, taskId.ToString())
+            .Delete();
+
+        if (asignados.Count == 0)
+        {
+            return;
+        }
+
+        await Client
+            .From<TaskAssignee>()
+            .Insert(asignados
+                .Select(userId => new TaskAssignee { TaskId = taskId, UserId = userId })
+                .ToList());
+    }
+
+    // Borra sin autorizar (solo se usa para deshacer una tarea creada por el propio servicio).
+    private Task EliminarTareaDirectaAsync(Guid taskId) =>
+        Client
+            .From<TeamTask>()
+            .Filter("id", Operator.Equals, taskId.ToString())
+            .Delete();
 
     public Task<List<(MailboxEntry Entry, Message Message)>> ObtenerBandejaEntradaAsync() =>
         ObtenerMensajesDeCarpetaAsync("inbox");

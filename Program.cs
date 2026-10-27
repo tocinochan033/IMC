@@ -1,4 +1,4 @@
-using IMC_.Components;
+    using IMC_.Components;
 using IMC_.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,6 +9,7 @@ builder.Services.AddRazorComponents()
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage.ProtectedSessionStorage>();
 builder.Services.AddScoped<SupabaseSessionPersistence>();
 builder.Services.AddScoped<SupabaseService>();
+builder.Services.AddScoped<ChatService>();
 builder.Services.AddSingleton<FakeDataService>();
 
 var app = builder.Build();
